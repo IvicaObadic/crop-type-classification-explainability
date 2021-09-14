@@ -1,3 +1,6 @@
+"""
+Credits to https://github.com/MarcCoru/crop-type-mapping
+"""
 import numpy as np
 import datetime
 

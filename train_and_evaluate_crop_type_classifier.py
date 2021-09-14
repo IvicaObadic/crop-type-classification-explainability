@@ -65,13 +65,13 @@ def train_and_evaluate_crop_classifier(args):
 
         sequence_aggregator.set_timestamp(int(time.time()))
 
-        # all pixels contain sequences of same length
+        #all pixels contain sequences of same length
         sequence_length = train_dataset[0][0].shape[0]
         crop_type_classifier = init_model_with_hyper_params(
             sequence_length,
             args.num_classes,
             args.pos_enc_opt,
-            args.d_model,
+            args.model_dim,
             args.num_layers,
             args.num_heads)
 
@@ -83,7 +83,7 @@ def train_and_evaluate_crop_classifier(args):
 
         training_directory = os.path.join(
             args.results_root_dir,
-            "{}_classes".format(num_classes),
+            "{}_classes".format(args.num_classes),
             sequence_aggregator.get_label(),
             crop_type_classifier.get_label())
 

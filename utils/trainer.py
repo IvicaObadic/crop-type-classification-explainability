@@ -250,7 +250,7 @@ class Trainer():
         with torch.no_grad():
             for iteration, data in enumerate(dataloader):
 
-                inputs, positions, padded_indices, targets, ids = data
+                inputs, positions, targets, ids = data
 
                 if torch.cuda.is_available():
                     inputs = inputs.cuda()

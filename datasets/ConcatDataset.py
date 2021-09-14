@@ -1,3 +1,7 @@
+"""
+Credits to https://github.com/MarcCoru/crop-type-mapping
+"""
+
 import torch
 import numpy as np
 import bisect

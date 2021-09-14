@@ -53,7 +53,7 @@ class TransformerEncoder(nn.Module):
         self.encoder_layers = nn.ModuleList(
             [EncoderLayer(num_heads=num_heads, emb_dim=self.d_model, d_inner=d_inner) for _ in range(num_layers)])
 
-        self.positional_encoding = PositionalEncoding(self.d_model, pos_enc_opt)
+        self.positional_encoding = PositionalEncoding(pos_enc_opt, self.d_model)
 
     def create_attention_mask(self, x, non_padding_mask):
         """

@@ -1,3 +1,7 @@
+"""
+Credits to https://github.com/MarcCoru/crop-type-mapping
+"""
+
 import torch
 import torch.utils.data
 import pandas as pd

@@ -123,4 +123,7 @@ def init_model_with_hyper_params(
 
     if torch.cuda.is_available():
         crop_type_classifier = crop_type_classifier.cuda()
+
+    print("Initialized the transformer encoder with the following parameters: {}"
+          .format(crop_type_classifier.get_label()))
     return crop_type_classifier
