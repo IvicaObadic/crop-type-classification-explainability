@@ -33,10 +33,10 @@ def parse_args():
     parser.add_argument(
         '--time_points_to_sample', type=int, default=70, help='number of points to sample for the random and fixed sampling procedures')
     parser.add_argument(
-        '--num_layers', type=int, default=3, help='the number of layers for the model')
+        '--num_layers', type=str, default="3", help='the number of layers for the model. Multiple values should be separated with ,')
     parser.add_argument(
-        '--num_heads', type=int, default=4, help='the number of heads in each layer of the model')
-    parser.add_argument('--model_dim', type=int, default=128, help='embedding dimension of the model')
+        '--num_heads', type=str, default="4", help='the number of heads in each layer of the model. Multiple values should be separated with ,')
+    parser.add_argument('--model_dim', type=str, default="128", help='embedding dimension of the model. Multiple values should be separated with ,')
     parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
 
     args, _ = parser.parse_known_args()
@@ -56,58 +56,65 @@ def train_and_evaluate_crop_classifier(args):
 
     sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr, args.time_points_to_sample)
 
-    for training_time in range(sequence_aggregator.get_num_training_times()):
+    num_layers_opts = [int(layer) for layer in args.num_layers.split(',')]
+    num_heads_opts = [int(head) for head in args.num_heads.split(',')]
+    model_dims_opts = [int(model_dim) for model_dim in args.model_dim.split(',')]
 
-        train_dataset, valid_dataset, test_dataset = get_partitioned_dataset(
-            dataset_folder,
-            class_mapping,
-            sequence_aggregator)
+    for num_layers in num_layers_opts:
+        for num_heads in num_heads_opts:
+            for model_dim in model_dims_opts:
+                for training_time in range(sequence_aggregator.get_num_training_times()):
 
-        sequence_aggregator.set_timestamp(int(time.time()))
+                    train_dataset, valid_dataset, test_dataset = get_partitioned_dataset(
+                        dataset_folder,
+                        class_mapping,
+                        sequence_aggregator)
 
-        #all pixels contain sequences of same length
-        sequence_length = train_dataset[0][0].shape[0]
-        crop_type_classifier = init_model_with_hyper_params(
-            sequence_length,
-            args.num_classes,
-            args.pos_enc_opt,
-            args.model_dim,
-            args.num_layers,
-            args.num_heads)
+                    sequence_aggregator.set_timestamp(int(time.time()))
 
-        optimizer = ScheduledOptim(
-            torch.optim.Adam(
-                filter(lambda x: x.requires_grad, crop_type_classifier.parameters()),
-                betas=(0.9, 0.98), eps=1e-09, weight_decay=0.000413),
-            crop_type_classifier.d_model, 4000)
+                    #all pixels contain sequences of same length
+                    sequence_length = train_dataset[0][0].shape[0]
+                    crop_type_classifier = init_model_with_hyper_params(
+                        sequence_length,
+                        args.num_classes,
+                        args.pos_enc_opt,
+                        model_dim,
+                        num_layers,
+                        num_heads)
 
-        training_directory = os.path.join(
-            args.results_root_dir,
-            "{}_classes".format(args.num_classes),
-            sequence_aggregator.get_label(),
-            crop_type_classifier.get_label())
+                    optimizer = ScheduledOptim(
+                        torch.optim.Adam(
+                            filter(lambda x: x.requires_grad, crop_type_classifier.parameters()),
+                            betas=(0.9, 0.98), eps=1e-09, weight_decay=0.000413),
+                        crop_type_classifier.d_model, 4000)
 
-        logger = Logger(modes=["train", "test"], rootpath=training_directory)
-        config = dict(
-            epochs=100,
-            store=training_directory,
-            test_every_n_epochs=5,
-            logger=logger,
-            optimizer=optimizer)
+                    training_directory = os.path.join(
+                        args.results_root_dir,
+                        "{}_classes".format(args.num_classes),
+                        sequence_aggregator.get_label(),
+                        crop_type_classifier.get_label())
 
-        loss_fn = FocalLoss(gamma=1.0)
-        trainer = Trainer(crop_type_classifier,
-                          create_data_loader(train_dataset),
-                          create_data_loader(valid_dataset),
-                          loss_fn=loss_fn,
-                          **config)
-        logger = trainer.fit()
+                    logger = Logger(modes=["train", "test"], rootpath=training_directory)
+                    config = dict(
+                        epochs=100,
+                        store=training_directory,
+                        test_every_n_epochs=5,
+                        logger=logger,
+                        optimizer=optimizer)
 
-        # stores all stored values in the rootpath of the logger
-        logger.save()
+                    loss_fn = FocalLoss(gamma=1.0)
+                    trainer = Trainer(crop_type_classifier,
+                                      create_data_loader(train_dataset),
+                                      create_data_loader(valid_dataset),
+                                      loss_fn=loss_fn,
+                                      **config)
+                    logger = trainer.fit()
 
-        # evaluate on the test set
-        predict(test_dataset, crop_type_classifier, training_directory, loss_fn, args.save_weights_and_gradients)
+                    # stores all stored values in the rootpath of the logger
+                    logger.save()
+
+                    # evaluate on the test set
+                    predict(test_dataset, crop_type_classifier, training_directory, loss_fn, args.save_weights_and_gradients)
 
 
 if __name__ == '__main__':
