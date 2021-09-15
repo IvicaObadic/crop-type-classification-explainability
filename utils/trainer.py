@@ -120,7 +120,7 @@ class Trainer():
 
             if self.epoch > self.early_stopping_min_epochs and self.check_for_early_stopping():
                 print()
-                print(f"Model did not improve in the last {self.early_stopping_smooth_period} epochs."
+                print(f"Model did not improve in the last {self.early_stopping_patience} epochs."
                       f"Early termination...")
                 break
 

@@ -1,4 +1,5 @@
 import os
+import argparse
 import pickle
 
 import numpy as np
@@ -12,6 +13,34 @@ import torch
 from torch.utils.data.sampler import RandomSampler
 import torch.nn.functional as F
 from models.LossFunctions import *
+
+def parse_args():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--dataset_folder', help='the root folder of the dataset')
+    parser.add_argument(
+        '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
+    parser.add_argument(
+        '--model_dir', help='the directory where the trained model is stored')
+    parser.add_argument(
+        '--seq_aggr', help='sequence aggregation method', default="weekly_average",
+        choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
+    parser.add_argument(
+        '--pos_enc_opt', type=str, default="obs_aq_date", help='positional encoding method')
+    parser.add_argument(
+        '--time_points_to_sample', type=int, default=70,
+        help='number of points to sample for the random and fixed sampling procedures')
+    parser.add_argument(
+        '--num_layers', type=int, default=3, help='the number of layers for the model')
+    parser.add_argument(
+        '--num_heads', type=int, default=4, help='the number of heads in each layer of the model')
+    parser.add_argument('--model_dim', type=int, default=128, help='embedding dimension of the model')
+    parser.add_argument('--save_weights_and_gradients', action="store_true",
+                        help='store the weights and gradients during test time')
+
+    args, _ = parser.parse_known_args()
+    return args
 
 
 def track_attn_weights_gradient(attn_weights_by_layer):
@@ -27,12 +56,14 @@ def get_attn_weights_gradient(attn_weights_by_layer):
     return attn_weights_grad_by_layer
 
 
-def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save_weights_and_gradients = True):
+def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save_weights_and_gradients=True):
 
     print("Predicting on a test set...")
-    print(results_dir)
     model_path = os.path.join(results_dir, "best_model.pth")
     assert os.path.exists(model_path), 'The provided results_dir does not contain the learned model'
+
+    crop_type_classifier_model.load(model_path)
+    crop_type_classifier_model.eval()
 
     predictions_path = os.path.join(results_dir, "predictions")
     if os.path.exists(predictions_path):
@@ -48,9 +79,6 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
 
     classification_metric = ClassMetric()
 
-    crop_type_classifier_model.load(model_path)
-    crop_type_classifier_model.eval()
-
     test_data_loader = torch.utils.data.DataLoader(
         dataset=test_dataset,
         sampler=RandomSampler(test_dataset),
@@ -64,14 +92,13 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
         if dataset_sample_idx % 500 == 0:
             print('Crop type prediction for sample {}'.format(dataset_sample_idx))
 
-        x, positions, padded_indices, y, parcel_id = batch_sample
+        x, positions, y, parcel_id = batch_sample
         if torch.cuda.is_available():
             x = x.cuda()
             y = y.cuda()
-            padded_indices = padded_indices.cuda()
             positions = positions.cuda()
 
-        log_probabilities, attn_weights_by_layer = crop_type_classifier_model(x, positions, padded_indices)
+        log_probabilities, attn_weights_by_layer = crop_type_classifier_model(x, positions)
         track_attn_weights_gradient(attn_weights_by_layer)
         prediction = log_probabilities.exp().max()
         prediction.backward()
@@ -94,20 +121,24 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
 
 
 if __name__ == "__main__":
-    root = "C:/Users/Ivica Obadic/Desktop/Explainable Machine Learning in Earth Observations/Projects/EO_explainability_survey/Datasets/BavarianCrops/"
-    num_classes = 12
-    class_mapping = os.path.join(root, "classmapping{}.csv".format(num_classes))
-    _,_, test_dataset = get_partitioned_dataset(root, class_mapping, SequencePadder())
+    args = parse_args()
 
-    crop_type_classifier_model = init_model_with_default_hyper_params(
+    class_mapping = os.path.join(args.dataset_folder, "classmapping{}.csv".format(args.num_classes))
+    sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr, args.time_points_to_sample)
+    _,_, test_dataset = get_partitioned_dataset(args.dataset_folder, class_mapping, sequence_aggregator)
+
+    crop_type_classifier_model = init_model_with_hyper_params(
         test_dataset[0][0].shape[0],
-        num_classes=num_classes)
-    results_dir = "C:/Users/Ivica Obadic/EO_explainability_survey/training_results/bavarian_crops/pos_enc_obs_date/{}_classes/sampling/fixed_70_obs_1626980215/".format(num_classes)
+        args.num_classes,
+        args.pos_enc_opt,
+        args.model_dim,
+        args.num_layers,
+        args.num_heads)
 
     predict(
         test_dataset,
         crop_type_classifier_model,
-        results_dir,
+        args.model_dir,
         loss_fn=FocalLoss(gamma=1.0),
         save_weights_and_gradients=False)
 
