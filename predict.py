@@ -140,7 +140,7 @@ if __name__ == "__main__":
         crop_type_classifier_model,
         args.model_dir,
         loss_fn=FocalLoss(gamma=1.0),
-        save_weights_and_gradients=args.same_weights_and_gradients)
+        save_weights_and_gradients=args.save_weights_and_gradients)
 
 
 
