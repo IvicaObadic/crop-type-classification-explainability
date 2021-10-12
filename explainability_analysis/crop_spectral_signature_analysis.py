@@ -1,9 +1,9 @@
 import pandas as pd
+import numpy as np
 
 
 def calc_spectral_signature_per_class_and_time_frame(
         spectral_indices_per_parcel,
-        parcel_id_to_class_mapping,
         aggregation_time_frame="WEEK"):
 
     assert aggregation_time_frame in ["WEEK", "MONTH"]
@@ -19,4 +19,5 @@ def calc_spectral_signature_per_class_and_time_frame(
     elif aggregation_time_frame == "MONTH":
         spectral_signature_for_all_parcels["MONTH"] = spectral_signature_for_all_parcels["TIMESTAMP"].dt.to_period("M")
 
-    return spectral_signature_for_all_parcels.groupby(["CLASS", aggregation_time_frame]).mean().reset_index()
+    return spectral_signature_for_all_parcels.groupby(["CLASS", aggregation_time_frame]).\
+        agg(["mean", "median", "var"]).reset_index()

@@ -60,7 +60,7 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
 
     print("Predicting on a test set...")
     model_path = os.path.join(results_dir, "best_model.pth")
-    assert os.path.exists(model_path), 'The provided results_dir does not contain the learned model'
+    assert os.path.exists(model_path), 'The provided resulting directory does not contain the learned model'
 
     crop_type_classifier_model.load(model_path)
     crop_type_classifier_model.eval()
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         crop_type_classifier_model,
         args.model_dir,
         loss_fn=FocalLoss(gamma=1.0),
-        save_weights_and_gradients=False)
+        save_weights_and_gradients=args.same_weights_and_gradients)
 
 
 
