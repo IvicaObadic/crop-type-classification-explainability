@@ -13,6 +13,10 @@ import torch
 from torch.utils.data.sampler import RandomSampler
 import torch.nn.functional as F
 from models.LossFunctions import *
+from sklearn.manifold import TSNE
+import collections
+
+from sklearn.cluster import KMeans
 
 def parse_args():
 
@@ -20,11 +24,13 @@ def parse_args():
     parser.add_argument(
         '--dataset_folder', help='the root folder of the dataset')
     parser.add_argument(
+        '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
+    parser.add_argument(
         '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
         '--model_dir', help='the directory where the trained model is stored')
     parser.add_argument(
-        '--seq_aggr', help='sequence aggregation method', default="weekly_average",
+        '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
     parser.add_argument(
         '--pos_enc_opt', type=str, default="obs_aq_date", help='positional encoding method')
@@ -32,12 +38,13 @@ def parse_args():
         '--time_points_to_sample', type=int, default=70,
         help='number of points to sample for the random and fixed sampling procedures')
     parser.add_argument(
-        '--num_layers', type=int, default=3, help='the number of layers for the model')
+        '--num_layers', type=int, default=1, help='the number of layers for the model')
     parser.add_argument(
-        '--num_heads', type=int, default=4, help='the number of heads in each layer of the model')
+        '--num_heads', type=int, default=1, help='the number of heads in each layer of the model')
     parser.add_argument('--model_dim', type=int, default=128, help='embedding dimension of the model')
     parser.add_argument('--save_weights_and_gradients', action="store_true",
                         help='store the weights and gradients during test time')
+    parser.add_argument('--shuffle_sequences', action="store_true", help='whether to shuffle sequences during training and test time')
 
     args, _ = parser.parse_known_args()
     return args
@@ -56,21 +63,76 @@ def get_attn_weights_gradient(attn_weights_by_layer):
     return attn_weights_grad_by_layer
 
 
-def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save_weights_and_gradients=True):
+def predict(
+        test_dataset,
+        crop_type_classifier_model,
+        results_dir,
+        loss_fn,
+        save_weights_and_gradients):
+
+    #function so store keys and values
+    def summarize_keys_and_queries(mod, inp, multi_head_attn_layer_output):
+
+        def map_types(label):
+            if label[0] == "Q":
+                return "QUERY"
+            else:
+                return "KEY"
+
+        parcel_positions = positions.squeeze()
+        valid_positions = parcel_positions[parcel_positions != -1].tolist()
+
+        queries = multi_head_attn_layer_output[0]
+        keys = multi_head_attn_layer_output[1]
+        queries = queries.squeeze()[parcel_positions != -1].cpu().detach().numpy()
+        keys = keys.squeeze()[parcel_positions != -1].cpu().detach().numpy()
+
+        keys_clusters = KMeans(n_clusters=2).fit_predict(keys)
+        clusters = [-1] * len(valid_positions)
+        clusters.extend(keys_clusters)
+
+        observation_acqusition_dates = pd.to_datetime(valid_positions, unit="D", origin="2018"). \
+            map(lambda x: "{:02d}-{:02d}".format(x.day, x.month))
+
+        keys_and_queries = np.vstack((queries, keys))
+
+        attn_before_softmax = np.matmul(queries, keys.T)
+        max_key_indices = np.argsort(attn_before_softmax)[:, -5]
+        most_common_keys_indices = [key_idx for key_idx, key_count in
+                                    collections.Counter(max_key_indices).most_common(5)]
+
+        query_labels = ["Q_{}".format(observation_acqusition_dates[i]) for i in range(len(valid_positions))]
+        key_labels = ["K_{}".format(observation_acqusition_dates[i]) for i in range(len(valid_positions))]
+        query_labels.extend(key_labels)
+
+        keys_and_queries = TSNE(n_components=2, learning_rate='auto', init='random').fit_transform(keys_and_queries)
+        keys_and_queries = pd.DataFrame(data=keys_and_queries, index=query_labels, columns=["emb_dim_1", "emb_dim_2"])
+        keys_and_queries["TYPE"] = keys_and_queries.index.map(map_types)
+        keys_and_queries["CLUSTER"] = clusters
+
+        show_marker_text = [False] * keys_and_queries.shape[0]
+        for key_idx in most_common_keys_indices:
+            show_marker_text[len(valid_positions) + key_idx] = True
+        keys_and_queries["SHOW_MARKER_TEXT"] = show_marker_text
+
+        key_query_parcel_data[parcel_id.item()] = keys_and_queries
 
     print("Predicting on a test set...")
-    model_path = os.path.join(results_dir, "best_model.pth")
-    assert os.path.exists(model_path), 'The provided resulting directory does not contain the learned model'
-
-    crop_type_classifier_model.load(model_path)
-    crop_type_classifier_model.eval()
-
     predictions_path = os.path.join(results_dir, "predictions")
     if os.path.exists(predictions_path):
         return
 
-    os.mkdir(predictions_path)
+    model_path = os.path.join(results_dir, "best_model.pth")
+    assert os.path.exists(model_path), 'The provided resulting directory does not contain the learned model'
+    crop_type_classifier_model.load(model_path)
+    crop_type_classifier_model.eval()
 
+    #register the hook for storing self-attention query and key embeddings
+    for name, module in crop_type_classifier_model.named_modules():
+        if name == "transformer_encoder.encoder_layers.0.inp_projection_layer":
+            module.register_forward_hook(summarize_keys_and_queries)
+
+    os.mkdir(predictions_path)
     attn_weights_dir = os.path.join(predictions_path, "attn_weights")
     os.mkdir(attn_weights_dir)
 
@@ -78,13 +140,12 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
     os.mkdir(attn_weights_gradients_dir)
 
     classification_metric = ClassMetric()
+    key_query_parcel_data = dict()
 
-    test_data_loader = torch.utils.data.DataLoader(
-        dataset=test_dataset,
-        sampler=RandomSampler(test_dataset),
-        batch_size=1,
-        num_workers=4)
-
+    test_data_loader = torch.utils.data.DataLoader(dataset=test_dataset,
+                                                   sampler=RandomSampler(test_dataset),
+                                                   batch_size=1,
+                                                   num_workers=4)
     for dataset_sample_idx, batch_sample in enumerate(test_data_loader):
 
         crop_type_classifier_model.zero_grad()
@@ -97,7 +158,6 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
             x = x.cuda()
             y = y.cuda()
             positions = positions.cuda()
-
         log_probabilities, attn_weights_by_layer = crop_type_classifier_model(x, positions)
         track_attn_weights_gradient(attn_weights_by_layer)
         prediction = log_probabilities.exp().max()
@@ -105,6 +165,9 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
         attn_weights_gradient = get_attn_weights_gradient(attn_weights_by_layer)
 
         if save_weights_and_gradients:
+            observation_positions = positions.detach().cpu().numpy()
+            np.savetxt(os.path.join(attn_weights_dir,"{}_prediction_positions.csv".format(parcel_id.item())),
+                       observation_positions)
             with open(os.path.join(attn_weights_dir, "{}_attn_weights.pickle".format(parcel_id.item())), "wb") as handle:
                 pickle.dump(attn_weights_by_layer, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -118,18 +181,31 @@ def predict(test_dataset, crop_type_classifier_model, results_dir, loss_fn, save
         classification_metric.add_batch_stats(parcel_id, loss, label, prediction)
 
     classification_metric.save_results(predictions_path, test_dataset.get_class_names())
-
+    with open(os.path.join(attn_weights_dir, "keys_and_queries.pickle"), "wb") as handle:
+        print("Saving keys and queries data for dataset parcels")
+        pickle.dump(key_query_parcel_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == "__main__":
     args = parse_args()
 
     class_mapping = os.path.join(args.dataset_folder, "classmapping{}.csv".format(args.num_classes))
     sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr, args.time_points_to_sample)
-    _,_, test_dataset = get_partitioned_dataset(args.dataset_folder, class_mapping, sequence_aggregator)
+
+    if args.classes_to_exclude is not None:
+        classes_to_exclude = [class_to_exclude for class_to_exclude in args.classes_to_exclude.split(',')]
+    else:
+        classes_to_exclude = None
+
+    _,_, test_dataset = get_partitioned_dataset(
+        args.dataset_folder,
+        class_mapping,
+        sequence_aggregator,
+        classes_to_exclude,
+        args.shuffle_sequences)
 
     crop_type_classifier_model = init_model_with_hyper_params(
         test_dataset[0][0].shape[0],
-        args.num_classes,
+        test_dataset.nclasses,
         args.pos_enc_opt,
         args.model_dim,
         args.num_layers,

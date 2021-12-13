@@ -15,7 +15,20 @@ from datasets.util_functions import *
 
 class BavarianCropsDataset(torch.utils.data.Dataset):
 
-    def __init__(self, root, partition, classmapping, region, sequence_aggregator, mode=None, scheme="random", cache=True, seed=0, validfraction=0.1):
+    def __init__(
+            self,
+            root,
+            partition,
+            classmapping,
+            region,
+            sequence_aggregator,
+            mode=None,
+            classes_to_exclude=None,
+            shuffle_sequences=False,
+            scheme="random",
+            cache=True,
+            seed=0,
+            validfraction=0.1):
         assert (mode in ["trainvalid", "traintest"] and scheme=="random") or (mode is None and scheme=="blocks") # <- if scheme random mode is required, else None
         assert scheme in ["random","blocks"]
         assert partition in ["train","test","trainvalid","valid"]
@@ -52,18 +65,23 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         self.mapping = pd.read_csv(classmapping, index_col=0).sort_values(by="id")
         self.mapping = self.mapping.set_index("nutzcode")
+        if classes_to_exclude is not None:
+            self.mapping = self.mapping[~self.mapping["classname"].isin(classes_to_exclude)]
+            crop_type_names = self.mapping["classname"].unique().tolist()
+            self.mapping["id"] = self.mapping["classname"].map(lambda crop_type: crop_type_names.index(crop_type))
+
         self.classes = self.mapping["id"].unique()
         self.classname = self.mapping.groupby("id").first().classname.values
-        self.klassenname = self.mapping.groupby("id").first().klassenname.values
         self.nclasses = len(self.classes)
-
+        self.shuffle_sequences = shuffle_sequences
         self.region = region
         self.partition = partition
         self.data_folder = "{root}/csv/{region}".format(root=self.root, region=self.region)
 
-        print("Initializing BavarianCropsDataset {} partition in {}".format(self.partition, self.region))
+        print("Initializing BavarianCropsDataset {} partition in {} with sequence shuffling = {}"
+              .format(self.partition, self.region, self.shuffle_sequences))
 
-        self.cache = os.path.join(self.root,"npy",os.path.basename(classmapping), scheme,region, partition)
+        self.cache = os.path.join(self.root, "npy", str(self.nclasses), ",".join(self.classname), scheme, region, partition)
 
         print("read {} classes".format(self.nclasses))
 
@@ -79,13 +97,11 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         self.hist, _ = np.histogram(self.y, bins=self.nclasses)
 
-        print("loaded {} samples".format(len(self.ids)))
-        #print("class frequencies " + ", ".join(["{c}:{h}".format(h=h, c=c) for h, c in zip(self.hist, self.classes)]))
-
         print(self)
 
     def __str__(self):
-        return "Dataset {}. region {}. partition {}. X:{}, y:{} with {} classes".format(self.root, self.region, self.partition,str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
+        return "Dataset {}. region {}. partition {}. Sequence shuffling = {} X:{}, y:{} with {} classes".format(
+            self.root, self.region, self.partition, self.shuffle_sequences, str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
 
     def read_ids_random(self):
         assert isinstance(self.seed, int)
@@ -307,12 +323,20 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         return len(self.ids)
 
     def __getitem__(self, idx):
-        X = self.X[idx]
+        X = np.copy(self.X[idx])
         parcel_id = self.ids[idx]
 
         X, positions = self.sequence_aggregator.aggregate_sequence(parcel_id, X, self)
 
         y = np.array([self.y[idx]] * X.shape[0])  # repeat y for each entry in x
+
+        if self.shuffle_sequences:
+            shuffled_indices = np.random.permutation(X.shape[0])
+            X = X[shuffled_indices]
+            positions = positions[shuffled_indices]
+            if str(parcel_id) in ["77137894", "75415581"]:
+                print("Shuffled positions for parcel {}".format(parcel_id))
+                print(positions)
 
         X = torch.from_numpy(X).type(torch.FloatTensor)
         y = torch.from_numpy(y).type(torch.LongTensor)
@@ -341,6 +365,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             parcel_reflectance["NDVI"] = (parcel_reflectance[NEAR_INFRARED_BAND] - parcel_reflectance[VISIBLE_RED_BAND]) /\
                                          (parcel_reflectance[NEAR_INFRARED_BAND] + parcel_reflectance[VISIBLE_RED_BAND])
             parcel_reflectance["CLASS"] = self.classname[self.y[idx]]
+            parcel_reflectance.set_index("TIMESTAMP", inplace=True)
             spectral_indices[parcel_id] = parcel_reflectance
 
 

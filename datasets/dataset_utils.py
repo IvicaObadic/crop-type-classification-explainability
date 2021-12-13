@@ -9,7 +9,13 @@ from datasets.ConcatDataset import ConcatDataset
 
 AVAILABLE_REGIONS = ["holl", "krum", "nowa"]
 
-def get_partitioned_dataset(root, class_mapping, sequence_aggregator, target_regions=AVAILABLE_REGIONS):
+def get_partitioned_dataset(
+        root,
+        class_mapping,
+        sequence_aggregator,
+        classes_to_exclude,
+        shuffle_sequences=False,
+        target_regions=AVAILABLE_REGIONS):
     assert len(target_regions) > 0, 'At least one region must be supplied'
 
     train_datasets = []
@@ -28,22 +34,28 @@ def get_partitioned_dataset(root, class_mapping, sequence_aggregator, target_reg
                                              classmapping=class_mapping,
                                              region=region,
                                              sequence_aggregator=sequence_aggregator,
+                                             classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
-                                             seed=seconds_since_epoch_start)
+                                             seed=seconds_since_epoch_start,
+                                             shuffle_sequences=shuffle_sequences)
         valid_dataset = BavarianCropsDataset(root=root,
                                              partition="valid",
                                              classmapping=class_mapping,
                                              region=region,
                                              sequence_aggregator=sequence_aggregator,
+                                             classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
-                                             seed=seconds_since_epoch_start)
+                                             seed=seconds_since_epoch_start,
+                                             shuffle_sequences=shuffle_sequences)
         test_dataset = BavarianCropsDataset(root=root,
                                             partition="test",
                                             classmapping=class_mapping,
                                             region=region,
                                             sequence_aggregator=sequence_aggregator,
+                                            classes_to_exclude=classes_to_exclude,
                                             scheme="blocks",
-                                            seed=seconds_since_epoch_start)
+                                            seed=seconds_since_epoch_start,
+                                            shuffle_sequences=shuffle_sequences)
 
         raw_sequence_lengths = np.append(raw_sequence_lengths, train_dataset.sequencelengths)
         raw_sequence_lengths = np.append(raw_sequence_lengths, valid_dataset.sequencelengths)

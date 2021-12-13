@@ -5,29 +5,42 @@ import scipy.stats as stats
 import pandas as pd
 import pickle
 import torch
+from torch.utils.data.sampler import RandomSampler
+import collections
+
 from sklearn.cluster import KMeans
 from sklearn.metrics import *
 from scipy.optimize import linear_sum_assignment
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import MinMaxScaler
 
+from explainability_analysis.util import timeframe_columns
+from models.CropTypeClassifier import *
 
-def summarize_attention_weights_as_feature_embeddings(attn_weights_root_dir, target_layer, target_head_idx=-1):
 
-    parcel_ids = []
-    feature_embeddings = []
+def summarize_attention_weights_as_feature_embeddings(
+        attn_weights_root_dir,
+        target_layer,
+        target_head_idx=-1,
+        summary_fn="sum"):
+
+    feature_embeddings = dict()
 
     attention_weights_files = [attn_weight_file
                                for attn_weight_file in os.listdir(attn_weights_root_dir)
                                if attn_weight_file.split("_")[-1] == "weights.pickle"]
 
     for i, attn_weight_file in enumerate(attention_weights_files):
+        parcel_id = attn_weight_file.split("_")[0]
 
-        if i % 5000 == 0:
+        if i % 1000 == 0:
             print("Reading the attention weights for the {}-th test example".format(i))
 
         with open(os.path.join(attn_weights_root_dir, attn_weight_file), 'rb') as handle:
             attn_weights_by_layer = pickle.load(handle)
+
+        with open(os.path.join(attn_weights_root_dir, '{}_attn_weights_df.pickle'.format(parcel_id)), 'rb') as handle:
+            attn_weights_df = pickle.load(handle)[target_layer]
 
         #first resolve the target layers
         if target_layer != "all":
@@ -51,11 +64,37 @@ def summarize_attention_weights_as_feature_embeddings(attn_weights_root_dir, tar
         else:
             relevant_indices = np.arange(0, relevant_attention_weights.shape[0], step=1)
 
-        feature_embeddings_for_parcel = relevant_attention_weights[relevant_indices].sum(dim=1).flatten().tolist()
-        feature_embeddings.append(feature_embeddings_for_parcel)
-        parcel_ids.append(attn_weight_file.split("_")[0])
+        if summary_fn == "sum":
+            feature_embeddings_for_parcel = relevant_attention_weights[relevant_indices].sum(dim=1)
+        else:
+            feature_embeddings_for_parcel = relevant_attention_weights[relevant_indices].mean(dim=1)
 
-    return parcel_ids, np.array(feature_embeddings)
+        feature_embeddings_for_parcel = feature_embeddings_for_parcel.cpu().detach().numpy()
+        feature_embeddings_for_parcel = pd.DataFrame(data=feature_embeddings_for_parcel, columns=attn_weights_df.columns)
+        feature_embeddings[parcel_id] = feature_embeddings_for_parcel
+
+    return feature_embeddings
+
+def calc_and_save_weekly_average_attn_weights(attn_weights_feature_embeddings_dict, root_dir_path=None):
+    weekly_average_attn_weights_per_parcel = dict()
+
+    for parcel_id in attn_weights_feature_embeddings_dict.keys():
+        feature_embeddings_for_parcel = attn_weights_feature_embeddings_dict[parcel_id]
+        feature_embeddings_for_parcel = pd.melt(
+            feature_embeddings_for_parcel,
+            var_name="OBS_AQ_DATE",
+            value_name="TOTAL_ATTENTION")
+        feature_embeddings_for_parcel["OBS_AQ_DATE"] = pd.to_datetime(
+            feature_embeddings_for_parcel["OBS_AQ_DATE"].map(
+            lambda obs_aq_date: "2018/{}/{}".format(obs_aq_date.split("-")[1], obs_aq_date.split("-")[0])))
+        feature_embeddings_for_parcel["WEEK"] = feature_embeddings_for_parcel["OBS_AQ_DATE"].dt.isocalendar().week.map(
+            lambda week: timeframe_columns[week - 1])
+        average_total_weekly_attention = feature_embeddings_for_parcel.groupby("WEEK").mean()
+        average_total_weekly_attention.index = average_total_weekly_attention.index.astype('str')
+        weekly_average_attn_weights_per_parcel[parcel_id] = average_total_weekly_attention
+        if root_dir_path is not None:
+            average_total_weekly_attention.to_csv(os.path.join(root_dir_path, "{}.csv".format(parcel_id)))
+    return weekly_average_attn_weights_per_parcel
 
 
 def calc_average_attention_weights_per_class(attn_weights_root_dir, predictions, target_class_label=-1, reduction="head"):
@@ -141,41 +180,51 @@ def get_avg_attn_weights_and_sd(attn_weights_root_dir, predictions, class_names,
     return avg_attn_weights_per_class, sd_attn_weights_per_class
 
 
-def cluster_and_evaluate_attention_features(
-        attention_features,
-        label_names_for_parcels,
-        label_ids_for_parcels,
-        num_classes,
-        attention_features_label,
-        experiments_root_dir):
+def extract_attn_weights_in_time_frame(attn_weights_per_class, target_classes, start_idx, end_idx):
+    class_labels = []
+    target_attn_weights = dict()
+    for class_label in attn_weights_per_class.keys():
+        class_attn_weights = attn_weights_per_class[class_label]
+        if class_label in target_classes:
+            for layer in class_attn_weights.keys():
+                class_attn_weights_per_layer = class_attn_weights[layer]
+                relevant_attn_weights = class_attn_weights_per_layer[:, :, start_idx:end_idx].detach().cpu().numpy()
+                if layer not in target_attn_weights:
+                    target_attn_weights[layer] = relevant_attn_weights
+                else:
+                    target_attn_weights[layer] = np.hstack((target_attn_weights[layer], relevant_attn_weights))
 
-    experiments_output_path = os.path.join(experiments_root_dir, attention_features_label)
-    if not os.path.isdir(experiments_output_path):
-        os.makedirs(experiments_output_path)
+            class_labels.append(class_label)
 
-    print("Clustering the attention features")
-    clustering_results = KMeans(num_classes).fit_predict(attention_features)
+    return target_attn_weights, class_labels
 
-    true_class_vs_cluster_cm = confusion_matrix(y_true=label_ids_for_parcels, y_pred=clustering_results)
 
-    np.savetxt(os.path.join(experiments_output_path, "confusion_matrix.csv"),
-               true_class_vs_cluster_cm,
-               fmt='%i',
-               delimiter=",",
-               comments="labels/cluster_assignments")
+def calc_attn_weight_corr_per_crop_type(spectral_indices, attn_weights_feature_embeddings):
+    crop_type_attn_weights_spectral_bands = dict()
+    for parcel_id in spectral_indices.keys():
+        parcel_spectral_index = spectral_indices[parcel_id]
+        target_class = parcel_spectral_index["CLASS"][0]
+        spectral_indices_for_parcel_corr = parcel_spectral_index.copy().drop(["YEAR", "MONTH", "DATE", "CLASS"],
+                                                                             axis=1)
+        spectral_indices_for_parcel_corr.rename(
+            {"B1": "Coastal Aerosol", "B2": "BLUE", "B3": "GREEN", "B4": "RED", "B8": "Near Infrared"},
+            inplace=True,
+            axis=1)
+        attn_weights_for_parcel = attn_weights_feature_embeddings[str(parcel_id)].to_numpy().T
+        spectral_indices_for_parcel_corr[["ATTN_WEIGHT"]] = attn_weights_for_parcel
 
-    row_ind, col_ind = linear_sum_assignment(true_class_vs_cluster_cm, maximize=True)
+        if target_class not in crop_type_attn_weights_spectral_bands:
+            crop_type_attn_weights_spectral_bands[target_class] = spectral_indices_for_parcel_corr
+        else:
+            crop_type_attn_weights_spectral_bands[target_class] = pd.concat(
+                [crop_type_attn_weights_spectral_bands[target_class], spectral_indices_for_parcel_corr])
 
-    accuracy = true_class_vs_cluster_cm[row_ind, col_ind].sum() / true_class_vs_cluster_cm.sum()
-    per_class_accuracy = true_class_vs_cluster_cm[row_ind, col_ind] / true_class_vs_cluster_cm.sum(axis=1)
+    crop_type_corr = dict()
+    for target_class in crop_type_attn_weights_spectral_bands.keys():
+        attn_spectral_bands_corr = crop_type_attn_weights_spectral_bands[target_class].corr()
+        crop_type_corr[target_class] = attn_spectral_bands_corr
 
-    print("Reducing the data to 2D for visualization")
-    plot_data = TSNE(2).fit_transform(attention_features)
-    plot_data = pd.DataFrame(plot_data, columns=["TSNE_DIM_1", "TSNE_DIM_2"])
-    plot_data["CLUSTER"] = clustering_results
-    plot_data["CLASS_NAME"] = label_names_for_parcels
-    return accuracy, per_class_accuracy, plot_data
-
+    return crop_type_corr
 
 def calculate_weights_gradients_correlations(predictions_path, predictions):
     parcel_ids = []
@@ -212,23 +261,3 @@ def calculate_weights_gradients_correlations(predictions_path, predictions):
          })
 
     return result
-
-
-def extract_attn_weights_in_time_frame(attn_weights_per_class, target_classes, start_idx, end_idx):
-    class_labels = []
-    target_attn_weights = dict()
-    for class_label in attn_weights_per_class.keys():
-        class_attn_weights = attn_weights_per_class[class_label]
-        if class_label in target_classes:
-            for layer in class_attn_weights.keys():
-                class_attn_weights_per_layer = class_attn_weights[layer]
-                relevant_attn_weights = class_attn_weights_per_layer[:, :, start_idx:end_idx].detach().cpu().numpy()
-                if layer not in target_attn_weights:
-                    target_attn_weights[layer] = relevant_attn_weights
-                else:
-                    target_attn_weights[layer] = np.hstack((target_attn_weights[layer], relevant_attn_weights))
-
-            class_labels.append(class_label)
-
-    return target_attn_weights, class_labels
-

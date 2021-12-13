@@ -3,93 +3,75 @@ import seaborn as sns
 import numpy as np
 import matplotlib.ticker as plticker
 
+show_every_nth_time_point_over100bs = 10
+show_every_nth_time_point_below100bs = 6
 
-def visualize_attention_heads_in_a_layer(
-        attn_weights_dim_1,
-        attn_weights_dim_2,
+def visualize_attention_weights(
+        parcels_data,
         plot_title,
-        left_head_label,
-        right_head_label,
-        class_labels):
+        viz_dimension="spectral_reflectance"):
 
-    n_heads = attn_weights_dim_1.shape[0]
-    fig, axs = plt.subplots(nrows=n_heads, ncols=2, figsize=(16, 10))
+    assert viz_dimension in ["spectral_reflectance", "key_query"], 'Invalid viz_dimension parameter'
 
-    cmaps = ['Blues', 'Greens', 'Oranges', 'Reds']
+    num_parcels = len(parcels_data)
+    fig, axs = plt.subplots(nrows=2, ncols=num_parcels, figsize=(16, 12))
+    cmaps = ['Blues', 'Greens', 'Oranges', 'YlOrBr']
 
-    for head_idx in range(n_heads):
-        attn_weights_dim_1_h_i = attn_weights_dim_1[head_idx]
+    for parcel_idx, parcel_data in enumerate(parcels_data):
+        parcel_class = parcel_data[0]
+        parcel_attn_weights = parcel_data[1]
+        parcel_attn_weights.index.name = 'Query Obs. Date'
+        if len(parcels_data) > 1:
+            ax_attn_weights = axs[0][parcel_idx]
+            ax_viz_dim = axs[1][parcel_idx]
+        else:
+            ax_attn_weights = axs[0]
+            ax_viz_dim = axs[1]
 
-        attn_weights_dim_2_h_i = attn_weights_dim_2[head_idx]
+        ax_attn_weights.set_title("Attention for {}".format(parcel_class))
 
-        ax_dim_1 = axs[head_idx][0]
-        ax_dim_2 = axs[head_idx][1]
+        number_of_obs = parcel_attn_weights.shape[0]
+        if number_of_obs > 100:
+            show_every_nth_time_point = show_every_nth_time_point_over100bs
+        else:
+            show_every_nth_time_point = show_every_nth_time_point_below100bs
 
-        ax_dim_1.set_title("Head {}: {}".format(head_idx + 1, left_head_label))
-        ax_dim_2.set_title("Head {}: {}".format(head_idx + 1, right_head_label))
+        show_color_bar = False
+        ax_attn_weights = sns.heatmap(
+            parcel_attn_weights,
+            cmap=cmaps[parcel_idx],
+            ax=ax_attn_weights,
+            yticklabels=show_every_nth_time_point,
+            xticklabels=show_every_nth_time_point,
+            cbar=show_color_bar)
+        if parcel_idx > 0:
+            ax_attn_weights.set_ylabel('')
 
-        ax_dim_1.set_xlabel(r'$T^{out}$')
-        ax_dim_2.set_ylabel(r'$T^{in}$')
+        ax_attn_weights.set_xlabel("Key Obs. Date")
+        ax_attn_weights.tick_params(bottom=False, top=False, left=False, labelsize=10)
 
-        ax_dim_1.set_xlabel(r'$T^{out}$')
-        ax_dim_2.set_ylabel(r'$T^{in}$')
+        if viz_dimension == "spectral_reflectance":
+            parcel_spectral_index = parcel_data[2].copy()
+            parcel_spectral_index = parcel_spectral_index.drop(["TOTAL TEMPORAL ATTENTION"], axis=1)
+            corr_matrix = parcel_spectral_index.corr()[["MEAN TEMPORAL ATTENTION"]]
+            corr_matrix[["ATTN_WEIGHT_CORR_ABS"]] = corr_matrix[["MEAN TEMPORAL ATTENTION"]].abs()
+            parcel_most_correlated_bands = corr_matrix[["ATTN_WEIGHT_CORR_ABS"]].nlargest(6, "ATTN_WEIGHT_CORR_ABS").index.values[:6]
+            spectral_index_to_plot = parcel_spectral_index[parcel_most_correlated_bands]
+            ax_viz_dim = sns.lineplot(data=spectral_index_to_plot, ax=ax_viz_dim)
+            ax_viz_dim.set_title("Attention vs Most Correlated Bands")
+            if parcel_idx == 0:
+                ax_viz_dim.set_ylabel("Reflectance")
 
-        tick_labels = ['2018-01-01', '2018-01-08', '2018-01-15', '2018-01-22', '2018-01-29',
-       '2018-02-05', '2018-02-12', '2018-02-19', '2018-02-26', '2018-03-05',
-       '2018-03-12', '2018-03-19', '2018-03-26', '2018-04-02', '2018-04-09',
-       '2018-04-16', '2018-04-23', '2018-04-30', '2018-05-07', '2018-05-14',
-       '2018-05-21', '2018-05-28', '2018-06-04', '2018-06-11', '2018-06-18',
-       '2018-06-25', '2018-07-02', '2018-07-09', '2018-07-16', '2018-07-23',
-       '2018-07-30', '2018-08-06', '2018-08-13', '2018-08-20', '2018-08-27',
-       '2018-09-03', '2018-09-10', '2018-09-17', '2018-09-24', '2018-10-01',
-       '2018-10-08', '2018-10-15', '2018-10-22', '2018-10-29', '2018-11-05',
-       '2018-11-12', '2018-11-19', '2018-11-26', '2018-12-03', '2018-12-10',
-       '2018-12-17', '2018-12-24']
+        else:
+            key_and_query_data = parcel_data[3]
+            ax_viz_dim = sns.scatterplot(
+                data=key_and_query_data, x="emb_dim_1", y="emb_dim_2", hue = "CLUSTER", style="TYPE", ax = ax_viz_dim)
+            ax_viz_dim.set_title("Keys and Queries Allignment".format(parcel_class))
+            ax_viz_dim.axhline(0.0)
+            ax_viz_dim.axvline(0.0)
 
-        ax_dim_1 = sns.heatmap(
-            attn_weights_dim_1_h_i,
-            cmap=cmaps[head_idx],
-            ax=ax_dim_1,
-            vmin=0,
-            vmax=1,
-            xticklabels=class_labels,
-            yticklabels=False)
-        n = 4  # Keeps every 7th label
-        #'[l.set_visible(False) for (i, l) in enumerate(ax_dim_1.xaxis.get_ticklabels()) if i % n != 0]
-        ax_dim_1.tick_params(bottom=False, top=False, left=False, labelsize=8)
-        ax_dim_2 = sns.heatmap(attn_weights_dim_2_h_i,
-                               cmap=cmaps[head_idx],
-                               ax=ax_dim_2,
-                               vmin=0,
-                               vmax=1,
-                               xticklabels=class_labels,
-                               yticklabels=False)
-        #[l.set_visible(False) for (i, l) in enumerate(ax_dim_2.xaxis.get_ticklabels()) if i % n != 0]
-        ax_dim_2.tick_params(bottom=False, top=False, left=False, labelsize=8)
-
-
-    fig.suptitle(plot_title, fontsize=12)
+    fig.suptitle(plot_title, fontsize=16)
     fig.tight_layout()
-
-
-def visualize_attention_by_layer(
-        target_layer,
-        attn_weights_dim_1,
-        attn_weights_dim_2,
-        plot_title,
-        left_head_label,
-        right_head_label,
-        class_labels):
-    attn_weights_dim_1_target_layer = attn_weights_dim_1[target_layer]
-    attn_weights_dim_2_target_layer = attn_weights_dim_2[target_layer]
-
-    visualize_attention_heads_in_a_layer(
-        attn_weights_dim_1_target_layer,
-        attn_weights_dim_2_target_layer,
-        plot_title,
-        left_head_label,
-        right_head_label,
-        class_labels)
 
 
 def stacked_boxplot(input_data, title, xlabel, ylabel):
@@ -101,3 +83,32 @@ def stacked_boxplot(input_data, title, xlabel, ylabel):
 
     plt.clf()
     plt.close()
+
+# def plot_attn_weights_key_queries_row_wise:
+    # fig, axs = plt.subplots(ncols=2,figsize=(12, 6))
+    # ax_attn_weights = sns.heatmap(
+    #             parcels_data[0][1],
+    #             cmap="Blues",
+    #             ax=axs[0],
+    #             yticklabels=5,
+    #             xticklabels=5,
+    #             cbar=True)
+    # ax_attn_weights.set_title("Attention Heatmap for a Corn Parcel")
+    #
+    # parcel_id = str(parcels_data[1][0].split()[-1])
+    # total_temp_attn = total_temporal_attention[parcel_id].to_numpy().flatten()
+    # print(total_temp_attn.mean())
+    # key_and_query_data = parcels_data[1][3]
+    # key_and_query_data["MARKER_SIZE"] = total_temp_attn.mean()
+    # print(key_and_query_data)
+    # ax_viz_dim = sns.scatterplot(
+    #     data=key_and_query_data,
+    #     x="emb_dim_1",
+    #     y="emb_dim_2",
+    #     hue = "CLUSTER",
+    #     style="TYPE",
+    #     s="MARKER_SIZE",
+    #     ax = axs[1])
+    # ax_viz_dim.set_title("Keys and Queries Allignment for Corn Parcel")
+    # ax_viz_dim.axhline(0.0)
+    # ax_viz_dim.axvline(0.0)

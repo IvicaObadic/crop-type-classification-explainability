@@ -108,7 +108,8 @@ def init_model_with_hyper_params(
         pos_enc_opt,
         d_model,
         num_layers,
-        num_heads):
+        num_heads,
+        with_gpu=True):
 
     d_inner = d_model * 4
     crop_type_classifier = CropTypeClassifier(
@@ -121,7 +122,7 @@ def init_model_with_hyper_params(
         d_inner=d_inner,
         num_classes=num_classes)
 
-    if torch.cuda.is_available():
+    if with_gpu and torch.cuda.is_available():
         crop_type_classifier = crop_type_classifier.cuda()
 
     print("Initialized the transformer encoder with the following parameters: {}"

@@ -1,6 +1,12 @@
 import os
 import numpy as np
 import pandas as pd
+import torch
+from torch.utils.data.sampler import RandomSampler
+import pickle
+from datasets import dataset_utils
+from datasets import sequence_aggregator
+
 
 timeframe_columns = ['2018-01-01', '2018-01-08', '2018-01-15', '2018-01-22', '2018-01-29',
        '2018-02-05', '2018-02-12', '2018-02-19', '2018-02-26', '2018-03-05',
@@ -60,3 +66,72 @@ def convert_attn_weight_dict_to_df(attn_weights_per_class_dict):
         attn_weights_per_class_result[class_name] = attn_weights_per_class_and_layer_df
 
     return attn_weights_per_class_result
+
+
+def extract_attn_weights_to_non_padded_indices(attn_weights_dir, post_processed_attn_weights_dir=None):
+
+    if post_processed_attn_weights_dir is None:
+        post_processed_attn_weights_dir = os.path.join(attn_weights_dir, "postprocessed")
+
+    if not os.path.exists(post_processed_attn_weights_dir):
+        os.makedirs(post_processed_attn_weights_dir)
+
+    observations_positions_files = [attn_weight_file
+                         for attn_weight_file in os.listdir(attn_weights_dir)
+                         if attn_weight_file.split(".")[-1] == "csv"]
+
+    for dataset_sample_idx, observation_positions_file in enumerate(observations_positions_files):
+
+        if dataset_sample_idx % 500 == 0:
+            print('Post-processing the attention weights for the {}-th sample'.format(dataset_sample_idx))
+
+        parcel_id = observation_positions_file.split("_")[0]
+        positions = np.loadtxt(os.path.join(attn_weights_dir, observation_positions_file), dtype=int)
+        non_padded_indices = positions != -1
+
+        with open(os.path.join(attn_weights_dir, '{}_attn_weights.pickle'.format(parcel_id)), 'rb') as handle:
+            parcel_attn_weights = pickle.load(handle)
+
+        non_padded_attn_weights_tensors = dict()
+        non_padded_attn_weights_dfs = dict()
+        for layer_id in parcel_attn_weights.keys():
+            attn_weights_per_layer = parcel_attn_weights[layer_id].cpu()
+            #filter out the attention to the padded columns
+            attn_weights_per_layer = attn_weights_per_layer[:, :, non_padded_indices]
+            #filter out the attention to the padded rows
+            attn_weights_per_layer = attn_weights_per_layer[:, non_padded_indices, :]
+
+            non_padded_attn_weights_tensors[layer_id] = attn_weights_per_layer
+
+            observation_acqusition_day = positions[non_padded_indices]
+            observation_acqusition_dates = pd.to_datetime(observation_acqusition_day, unit="D", origin="2018").\
+                map(lambda x: "{:02d}-{:02d}".format(x.day, x.month))
+
+            attn_weights_per_layer_df = pd.DataFrame(
+                data=attn_weights_per_layer.squeeze().detach().numpy(),
+                index=observation_acqusition_dates,
+                columns=observation_acqusition_dates)
+
+            non_padded_attn_weights_dfs[layer_id] = attn_weights_per_layer_df
+
+        with open(os.path.join(post_processed_attn_weights_dir, "{}_attn_weights.pickle".format(parcel_id)),
+                  "wb") as handle:
+            pickle.dump(non_padded_attn_weights_tensors, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        with open(os.path.join(post_processed_attn_weights_dir, "{}_attn_weights_df.pickle".format(parcel_id)),
+                  "wb") as handle:
+            pickle.dump(non_padded_attn_weights_dfs, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+if __name__ == '__main__':
+    num_classes = 12
+    dataset_folder = "C:/Users/datasets/BavarianCrops/"
+    class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(num_classes))
+    _, _, test_set = dataset_utils.get_partitioned_dataset(
+        dataset_folder,
+        class_mapping,
+        sequence_aggregator.SequencePadder(),
+        None,
+        shuffle_sequences=False)
+
+    attn_weights_dir = "C:/Users/results/{}_classes/shuffled_sequences/right_padding/obs_aq_date/layers=1,heads=1,emb_dim=128/predictions/attn_weights".format(test_set.nclasses)
+    extract_attn_weights_to_non_padded_indices(attn_weights_dir)
