@@ -122,8 +122,6 @@ def predict(
 
     print("Predicting on a test set...")
     predictions_path = os.path.join(results_dir, "predictions")
-    if os.path.exists(predictions_path):
-        return
 
     model_path = os.path.join(results_dir, "best_model.pth")
     assert os.path.exists(model_path), 'The provided resulting directory does not contain the learned model'
