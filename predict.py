@@ -52,6 +52,63 @@ def parse_args():
     return args
 
 
+def extract_attn_weights_to_non_padded_indices(attn_weights_dir, post_processed_attn_weights_dir=None):
+
+    if post_processed_attn_weights_dir is None:
+        post_processed_attn_weights_dir = os.path.join(attn_weights_dir, "postprocessed")
+
+    if not os.path.exists(post_processed_attn_weights_dir):
+        os.makedirs(post_processed_attn_weights_dir, exist_ok=True)
+
+    observations_positions_files = [attn_weight_file
+                         for attn_weight_file in os.listdir(attn_weights_dir)
+                         if attn_weight_file.split(".")[-1] == "csv"]
+
+    for dataset_sample_idx, observation_positions_file in enumerate(observations_positions_files):
+
+        if dataset_sample_idx % 500 == 0:
+            print('Post-processing the attention weights for the {}-th sample'.format(dataset_sample_idx))
+
+        parcel_id = observation_positions_file.split("_")[0]
+        positions = np.loadtxt(os.path.join(attn_weights_dir, observation_positions_file), dtype=int)
+        non_padded_indices = positions != -1
+
+        with open(os.path.join(attn_weights_dir, '{}_attn_weights.pickle'.format(parcel_id)), 'rb') as handle:
+            parcel_attn_weights = pickle.load(handle)
+
+        non_padded_attn_weights_tensors = dict()
+        non_padded_attn_weights_dfs = dict()
+        for layer_id in parcel_attn_weights.keys():
+            attn_weights_per_layer = parcel_attn_weights[layer_id].cpu()
+            #filter out the attention to the padded columns
+            attn_weights_per_layer = attn_weights_per_layer[:, :, non_padded_indices]
+            #filter out the attention to the padded rows
+            attn_weights_per_layer = attn_weights_per_layer[:, non_padded_indices, :]
+
+            non_padded_attn_weights_tensors[layer_id] = attn_weights_per_layer
+
+            observation_acqusition_day = positions[non_padded_indices]
+            observation_acqusition_dates = pd.to_datetime(observation_acqusition_day, unit="D", origin="2018").\
+                map(lambda x: "{:02d}-{:02d}".format(x.day, x.month))
+
+            attn_weights_per_layer_df = pd.DataFrame(
+                data=attn_weights_per_layer.squeeze().detach().numpy(),
+                index=observation_acqusition_dates,
+                columns=observation_acqusition_dates)
+
+            non_padded_attn_weights_dfs[layer_id] = attn_weights_per_layer_df
+
+        with open(os.path.join(post_processed_attn_weights_dir, "{}_attn_weights.pickle".format(parcel_id)),
+                  "wb") as handle:
+            pickle.dump(non_padded_attn_weights_tensors, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        with open(os.path.join(post_processed_attn_weights_dir, "{}_attn_weights_df.pickle".format(parcel_id)),
+                  "wb") as handle:
+            pickle.dump(non_padded_attn_weights_dfs, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        attn_weights_per_layer_df.to_csv(path="{}_attn_weights_df.csv".format(parcel_id))
+
+
 def track_attn_weights_gradient(attn_weights_by_layer):
     for attn_weights in attn_weights_by_layer.values():
         attn_weights.retain_grad()
@@ -183,6 +240,7 @@ def predict(
         classification_metric.add_batch_stats(parcel_id, loss, label, prediction)
 
     classification_metric.save_results(predictions_path, test_dataset.get_class_names())
+    extract_attn_weights_to_non_padded_indices(attn_weights_dir)
     if save_key_queries_embeddings:
         with open(os.path.join(attn_weights_dir, "keys_and_queries.pickle"), "wb") as handle:
             print("Saving keys and queries data for dataset parcels")
