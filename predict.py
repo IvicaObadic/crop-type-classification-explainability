@@ -44,6 +44,8 @@ def parse_args():
     parser.add_argument('--model_dim', type=int, default=128, help='embedding dimension of the model')
     parser.add_argument('--save_weights_and_gradients', action="store_true",
                         help='store the weights and gradients during test time')
+    parser.add_argument('--save_key_queries_embeddings', action="store_true",
+                        help='store the weights and gradients during test time')
     parser.add_argument('--shuffle_sequences', action="store_true", help='whether to shuffle sequences during training and test time')
 
     args, _ = parser.parse_known_args()
@@ -68,7 +70,8 @@ def predict(
         crop_type_classifier_model,
         results_dir,
         loss_fn,
-        save_weights_and_gradients):
+        save_weights_and_gradients,
+        save_key_queries_embeddings):
 
     #function so store keys and values
     def summarize_keys_and_queries(mod, inp, multi_head_attn_layer_output):
@@ -128,9 +131,10 @@ def predict(
     crop_type_classifier_model.eval()
 
     #register the hook for storing self-attention query and key embeddings
-    for name, module in crop_type_classifier_model.named_modules():
-        if name == "transformer_encoder.encoder_layers.0.inp_projection_layer":
-            module.register_forward_hook(summarize_keys_and_queries)
+    if save_key_queries_embeddings:
+        for name, module in crop_type_classifier_model.named_modules():
+            if name == "transformer_encoder.encoder_layers.0.inp_projection_layer":
+                module.register_forward_hook(summarize_keys_and_queries)
 
     os.mkdir(predictions_path)
     attn_weights_dir = os.path.join(predictions_path, "attn_weights")
@@ -181,9 +185,10 @@ def predict(
         classification_metric.add_batch_stats(parcel_id, loss, label, prediction)
 
     classification_metric.save_results(predictions_path, test_dataset.get_class_names())
-    with open(os.path.join(attn_weights_dir, "keys_and_queries.pickle"), "wb") as handle:
-        print("Saving keys and queries data for dataset parcels")
-        pickle.dump(key_query_parcel_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    if save_key_queries_embeddings:
+        with open(os.path.join(attn_weights_dir, "keys_and_queries.pickle"), "wb") as handle:
+            print("Saving keys and queries data for dataset parcels")
+            pickle.dump(key_query_parcel_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == "__main__":
     args = parse_args()
@@ -216,7 +221,8 @@ if __name__ == "__main__":
         crop_type_classifier_model,
         args.model_dir,
         loss_fn=FocalLoss(gamma=1.0),
-        save_weights_and_gradients=args.save_weights_and_gradients)
+        save_weights_and_gradients=args.save_weights_and_gradients,
+        save_key_queries_embeddings=args.save_key_queries_embeddings)
 
 
 

@@ -40,6 +40,8 @@ def parse_args():
         '--num_heads', type=str, default="1", help='the number of heads in each layer of the model. Multiple values should be separated with ,')
     parser.add_argument('--model_dim', type=str, default="128", help='embedding dimension of the model. Multiple values should be separated with ,')
     parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
+    parser.add_argument('--save_key_queries_embeddings', action="store_true",
+                        help='store the weights and gradients during test time')
     parser.add_argument('--shuffle_sequences', action="store_true", help='whether to shuffle sequences during training and test time')
 
 
@@ -130,7 +132,13 @@ def train_and_evaluate_crop_classifier(args):
                     logger.save()
 
                     # evaluate on the test set
-                    predict(test_dataset, crop_type_classifier, training_directory, loss_fn, args.save_weights_and_gradients)
+                    predict(
+                        test_dataset,
+                        crop_type_classifier,
+                        training_directory,
+                        loss_fn,
+                        args.save_weights_and_gradients,
+                        args.save_key_queries_embeddings)
 
 
 if __name__ == '__main__':
