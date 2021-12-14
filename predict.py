@@ -222,6 +222,8 @@ def predict(
         prediction = log_probabilities.exp().max()
         prediction.backward()
         attn_weights_gradient = get_attn_weights_gradient(attn_weights_by_layer)
+        for layer_id in attn_weights_by_layer.keys():
+            attn_weights_by_layer[layer_id] = attn_weights_by_layer[layer_id].detach().cpu()
 
         if save_weights_and_gradients:
             observation_positions = positions.detach().cpu().numpy()
