@@ -70,7 +70,7 @@ def extract_attn_weights_to_non_padded_indices(attn_weights_dir, post_processed_
             print('Post-processing the attention weights for the {}-th sample'.format(dataset_sample_idx))
 
         parcel_id = observation_positions_file.split("_")[0]
-        positions = np.loadtxt(os.path.join(attn_weights_dir, observation_positions_file), dtype=int)
+        positions = np.loadtxt(os.path.join(attn_weights_dir, observation_positions_file))
         non_padded_indices = positions != -1
 
         with open(os.path.join(attn_weights_dir, '{}_attn_weights.pickle'.format(parcel_id)), 'rb') as handle:
@@ -228,7 +228,8 @@ def predict(
         if save_weights_and_gradients:
             observation_positions = positions.detach().cpu().numpy()
             np.savetxt(os.path.join(attn_weights_dir,"{}_prediction_positions.csv".format(parcel_id.item())),
-                       observation_positions)
+                       observation_positions,
+                       fmt="%s")
             with open(os.path.join(attn_weights_dir, "{}_attn_weights.pickle".format(parcel_id.item())), "wb") as handle:
                 pickle.dump(attn_weights_by_layer, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
