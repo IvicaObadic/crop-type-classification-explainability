@@ -3,6 +3,7 @@ Credits to https://github.com/MarcCoru/crop-type-mapping
 """
 
 import torch
+import pandas as pd
 import numpy as np
 import bisect
 import warnings
@@ -73,9 +74,9 @@ class ConcatDataset(torch.utils.data.Dataset):
         return self.cumulative_sizes
 
     def calculate_spectral_indices(self):
-        spectral_indices = dict()
+        spectral_indices_dfs = []
 
         for dataset in self.datasets:
-            spectral_indices.update(dataset.calculate_spectral_indices())
+            spectral_indices_dfs.append(dataset.calculate_spectral_indices())
 
-        return spectral_indices
+        return pd.concat(spectral_indices_dfs).reset_index()

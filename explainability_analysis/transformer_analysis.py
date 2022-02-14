@@ -20,6 +20,7 @@ from models.CropTypeClassifier import *
 
 def summarize_attention_weights_as_feature_embeddings(
         attn_weights_root_dir,
+        target_layer,
         target_head_idx=-1,
         summary_fn="sum"):
 

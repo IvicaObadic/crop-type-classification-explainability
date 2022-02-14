@@ -106,8 +106,6 @@ def extract_attn_weights_to_non_padded_indices(attn_weights_dir, post_processed_
                   "wb") as handle:
             pickle.dump(non_padded_attn_weights_dfs, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        attn_weights_per_layer_df.to_csv(path="{}_attn_weights_df.csv".format(parcel_id))
-
 
 def track_attn_weights_gradient(attn_weights_by_layer):
     for attn_weights in attn_weights_by_layer.values():
@@ -174,6 +172,7 @@ def predict(
         for key_idx in most_common_keys_indices:
             show_marker_text[len(valid_positions) + key_idx] = True
         keys_and_queries["SHOW_MARKER_TEXT"] = show_marker_text
+
 
         key_query_parcel_data[parcel_id.item()] = keys_and_queries
 
@@ -243,7 +242,8 @@ def predict(
         classification_metric.add_batch_stats(parcel_id, loss, label, prediction)
 
     classification_metric.save_results(predictions_path, test_dataset.get_class_names())
-    extract_attn_weights_to_non_padded_indices(attn_weights_dir)
+    if save_weights_and_gradients:
+        extract_attn_weights_to_non_padded_indices(attn_weights_dir)
     if save_key_queries_embeddings:
         with open(os.path.join(attn_weights_dir, "keys_and_queries.pickle"), "wb") as handle:
             print("Saving keys and queries data for dataset parcels")

@@ -44,7 +44,6 @@ def parse_args():
                         help='store the weights and gradients during test time')
     parser.add_argument('--shuffle_sequences', action="store_true", help='whether to shuffle sequences during training and test time')
 
-
     args, _ = parser.parse_known_args()
     return args
 

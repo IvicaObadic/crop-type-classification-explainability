@@ -351,7 +351,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
                  and the values being dataframes containing the spectral indices at each time point
         """
         print("Calculating spectral indices for dataset: {}_{}".format(self.region, self.partition))
-        spectral_indices = dict()
+        spectral_indices_dfs = []
 
         for idx in range(len(self)):
             parcel_id = self.ids[idx]
@@ -362,11 +362,15 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
                 columns=DATE_COLUMN_NAMES + BANDS)
 
             parcel_reflectance = add_timestamp_column_from_date_columns(parcel_reflectance)
+            parcel_reflectance.drop(["YEAR", "MONTH", "DATE"], axis=1, inplace=True)
             parcel_reflectance["NDVI"] = (parcel_reflectance[NEAR_INFRARED_BAND] - parcel_reflectance[VISIBLE_RED_BAND]) /\
                                          (parcel_reflectance[NEAR_INFRARED_BAND] + parcel_reflectance[VISIBLE_RED_BAND])
             parcel_reflectance["CLASS"] = self.classname[self.y[idx]]
+            parcel_reflectance["PARCEL_ID"] = parcel_id
             parcel_reflectance.set_index("TIMESTAMP", inplace=True)
-            spectral_indices[parcel_id] = parcel_reflectance
 
 
-        return spectral_indices
+            spectral_indices_dfs.append(parcel_reflectance)
+
+
+        return pd.concat(spectral_indices_dfs).reset_index()
