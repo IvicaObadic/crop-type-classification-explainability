@@ -17,6 +17,6 @@ python train_and_evaluate_crop_type_classifier.py
   --save_weights_and_gradients
   --save_key_queries_embeddings
   ```
-After the training of the model is completed, this script also evaluates the model performance on the test set. Setting the ```save_weights_and_gradients``` ```save_key_queries_embeddings``` parameters saves the attention weights and key and query embeddings of the field parcels in the test set of the trained model for further explainability analysis.
+After the training of the model is completed, this script also evaluates the model performance on the test set. Setting the ```save_weights_and_gradients``` ```save_key_queries_embeddings``` parameters saves the attention weights and the key and query embeddings of the field parcels in the test set of the trained model for further explainability analysis.
 
-These attention weights and their corresponding key query embeddings are afterwards used to explain the learned attention patterns by performing attention sensitivity analysis and clustering the attention keys in order to discover the attention signature. The jupyter notebooks for these explainability analysis can be found under the ```notebooks``` directory.
+These attention weights and their corresponding key and query embeddings are afterwards used to explain the learned attention patterns by performing attention sensitivity analysis and clustering the attention keys in order to discover the attention signature. The jupyter notebooks for these explainability analysis can be found under the ```notebooks``` directory.
