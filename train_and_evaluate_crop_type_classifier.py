@@ -21,13 +21,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--dataset_folder', help='the root folder of the dataset', default="C:/Users/datasets/BavarianCrops/")
+        '--dataset_folder', help='the root folder of the dataset', default="/home/datasets/BavarianCrops")
     parser.add_argument(
         '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
     parser.add_argument(
         '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
-        '--results_root_dir', help='the directory where the results are stored', default="C:/Users/results")
+        '--results_root_dir', help='the directory where the results are stored', default="/home/results/crop-type-classification-explainability")
     parser.add_argument(
         '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
@@ -43,7 +43,7 @@ def parse_args():
     parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
-    parser.add_argument('--most_important_dates_file', type=str, default="key_attention_dates.csv", help='file which contains the most important days in the calendar year')
+    parser.add_argument('--most_important_dates_file', type=str, default=None, help='file which contains the most important days in the calendar year')
     parser.add_argument('--fraction_of_important_dates_to_keep', type=float, default=0.02, help='fraction of the most important days to use for every parcel')
 
     args, _ = parser.parse_known_args()
