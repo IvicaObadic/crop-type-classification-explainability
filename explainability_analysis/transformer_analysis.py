@@ -75,6 +75,7 @@ def summarize_attention_weights_as_feature_embeddings(
 
     return feature_embeddings
 
+
 def calc_and_save_weekly_average_attn_weights(attn_weights_feature_embeddings_dict, root_dir_path=None):
     weekly_average_attn_weights_per_parcel = dict()
 

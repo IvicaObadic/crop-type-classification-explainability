@@ -109,6 +109,11 @@ class Trainer():
 
             if self.epoch % self.test_every_n_epochs == 0:
                 self.validate_epoch(printer)
+                if self.epoch > self.early_stopping_min_epochs and self.check_for_early_stopping():
+                    print()
+                    print(f"Model did not improve in the last {self.early_stopping_patience} epochs."
+                          f"Early termination...")
+                    break
 
             if self.visdom is not None:
                 self.visdom.plot_epochs(self.logger.get_data())
@@ -118,11 +123,7 @@ class Trainer():
                 print("Saving log to {}".format(self.get_log_name()))
                 self.logger.get_data().to_csv(self.get_log_name())
 
-            if self.epoch > self.early_stopping_min_epochs and self.check_for_early_stopping():
-                print()
-                print(f"Model did not improve in the last {self.early_stopping_patience} epochs."
-                      f"Early termination...")
-                break
+
 
         print("Terminating training")
         self.snapshot(self.model, self.get_model_name())

@@ -14,7 +14,8 @@ def get_partitioned_dataset(
         class_mapping,
         sequence_aggregator,
         classes_to_exclude,
-        shuffle_sequences=False,
+        most_important_dates_file=None,
+        fraction_of_important_dates_to_keep = 1.0,
         target_regions=AVAILABLE_REGIONS):
     assert len(target_regions) > 0, 'At least one region must be supplied'
 
@@ -37,7 +38,8 @@ def get_partitioned_dataset(
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
                                              seed=seconds_since_epoch_start,
-                                             shuffle_sequences=shuffle_sequences)
+                                             most_important_dates_file = most_important_dates_file,
+                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep)
         valid_dataset = BavarianCropsDataset(root=root,
                                              partition="valid",
                                              classmapping=class_mapping,
@@ -46,7 +48,8 @@ def get_partitioned_dataset(
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
                                              seed=seconds_since_epoch_start,
-                                             shuffle_sequences=shuffle_sequences)
+                                             most_important_dates_file=most_important_dates_file,
+                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep)
         test_dataset = BavarianCropsDataset(root=root,
                                             partition="test",
                                             classmapping=class_mapping,
@@ -55,7 +58,8 @@ def get_partitioned_dataset(
                                             classes_to_exclude=classes_to_exclude,
                                             scheme="blocks",
                                             seed=seconds_since_epoch_start,
-                                            shuffle_sequences=shuffle_sequences)
+                                            most_important_dates_file=most_important_dates_file,
+                                            fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep)
 
         raw_sequence_lengths = np.append(raw_sequence_lengths, train_dataset.sequencelengths)
         raw_sequence_lengths = np.append(raw_sequence_lengths, valid_dataset.sequencelengths)

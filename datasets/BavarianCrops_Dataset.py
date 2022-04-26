@@ -24,11 +24,12 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             sequence_aggregator,
             mode=None,
             classes_to_exclude=None,
-            shuffle_sequences=False,
             scheme="random",
+            validfraction=0.1,
+            most_important_dates_file = None,
+            fraction_of_important_dates_to_keep=1.0,
             cache=True,
-            seed=0,
-            validfraction=0.1):
+            seed=0):
         assert (mode in ["trainvalid", "traintest"] and scheme=="random") or (mode is None and scheme=="blocks") # <- if scheme random mode is required, else None
         assert scheme in ["random","blocks"]
         assert partition in ["train","test","trainvalid","valid"]
@@ -73,22 +74,32 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.classes = self.mapping["id"].unique()
         self.classname = self.mapping.groupby("id").first().classname.values
         self.nclasses = len(self.classes)
-        self.shuffle_sequences = shuffle_sequences
         self.region = region
         self.partition = partition
+        self.most_important_dates = self.get_most_important_dates(most_important_dates_file)
+        self.fraction_of_important_dates_to_keep = fraction_of_important_dates_to_keep
+
         self.data_folder = "{root}/csv/{region}".format(root=self.root, region=self.region)
 
-        print("Initializing BavarianCropsDataset {} partition in {} with sequence shuffling = {}"
-              .format(self.partition, self.region, self.shuffle_sequences))
+        print("Initializing BavarianCropsDataset {} partition in {}".format(self.partition, self.region))
 
-        self.cache = os.path.join(self.root, "npy", str(self.nclasses), ",".join(self.classname), scheme, region, partition)
+        self.cache = os.path.join(
+            self.root,
+            "npy",
+            "{}_classes".format(self.nclasses))
+        self.cache = os.path.join(append_occluded_classes_label(self.cache, classes_to_exclude),
+                                  scheme,
+                                  region,
+                                  partition)
+
+        if self.most_important_dates is not None:
+            self.cache = os.path.join(self.cache,
+                                      "frac_most_important_dates",
+                                      str(self.fraction_of_important_dates_to_keep))
 
         print("read {} classes".format(self.nclasses))
 
-        if cache and self.cache_exists() and not self.mapping_consistent_with_cache():
-            self.clean_cache()
-
-        if cache and self.cache_exists() and self.mapping_consistent_with_cache():
+        if cache and self.cache_exists():
             print("precached dataset files found at " + self.cache)
             self.load_cached_dataset()
         else:
@@ -100,8 +111,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         print(self)
 
     def __str__(self):
-        return "Dataset {}. region {}. partition {}. Sequence shuffling = {} X:{}, y:{} with {} classes".format(
-            self.root, self.region, self.partition, self.shuffle_sequences, str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
+        return "Dataset {}. region {}. partition {}. X:{}, y:{} with {} classes".format(
+            self.root, self.region, self.partition, str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
 
     def read_ids_random(self):
         assert isinstance(self.seed, int)
@@ -186,6 +197,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         self.X = list()
         self.nutzcodes = list()
+        self.missing_key_dates_obs = list()
         self.stats = dict(
             not_found=list()
         )
@@ -198,14 +210,16 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             if os.path.exists(id_file):
                 self.samples.append(id_file)
 
-                X, label = self.load(id_file)
+                X, label, parcel_missing_key_dates_obs = self.load(id_file)
 
-                if X is not None and label is not None:
+                if X is not None and label is not None and parcel_missing_key_dates_obs is not None:
                     label = label[0]
                     if label in self.mapping.index:
                         self.X.append(X)
                         self.nutzcodes.append(label)
                         self.ids.append(id)
+                        self.missing_key_dates_obs.append(parcel_missing_key_dates_obs)
+
             else:
                 self.stats["not_found"].append(id_file)
 
@@ -218,14 +232,10 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.hist,_ = np.histogram(self.y, bins=self.nclasses)
         self.classweights = 1 / self.hist
 
-        self.cache_variables(self.y, self.sequencelengths, self.ids, self.ndims, self.X, self.classweights)
+        self.cache_variables(self.y, self.sequencelengths, self.ids, self.ndims, self.X, self.classweights, self.missing_key_dates_obs)
 
-    def mapping_consistent_with_cache(self):
-        # cached y must have the same number of classes than the mapping
-        return True
-        #return len(np.unique(np.load(os.path.join(self.cache, "y.npy")))) == self.nclasses
 
-    def cache_variables(self, y, sequencelengths, ids, ndims, X, classweights):
+    def cache_variables(self, y, sequencelengths, ids, ndims, X, classweights, missing_key_dates_obs):
         os.makedirs(self.cache, exist_ok=True)
         # cache
         np.save(os.path.join(self.cache, "classweights.npy"), classweights)
@@ -235,6 +245,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         np.save(os.path.join(self.cache, "ids.npy"), ids)
         #np.save(os.path.join(self.cache, "dataweights.npy"), dataweights)
         np.save(os.path.join(self.cache, "X.npy"), X)
+        np.save(os.path.join(self.cache, "missing_key_dates_obs.npy"), missing_key_dates_obs)
 
     def load_cached_dataset(self):
         # load
@@ -245,6 +256,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.max_sequence_length = self.sequencelengths.max()
         self.ids = np.load(os.path.join(self.cache, "ids.npy"))
         self.X = np.load(os.path.join(self.cache, "X.npy"), allow_pickle=True)
+        self.missing_key_dates_obs = np.load(os.path.join(self.cache, "missing_key_dates_obs.npy"), allow_pickle=True)
 
     def cache_exists(self):
         weightsexist = os.path.exists(os.path.join(self.cache, "classweights.npy"))
@@ -285,10 +297,18 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         sample = sample[columns_to_take].dropna()
 
         if sample.empty:
-            return None, None
+            return None, None, None
 
         label = sample["label"].values
         sample = sample.groupby('TIMESTAMP').mean().reset_index()
+        missing_key_dates_obs = 0
+        if self.most_important_dates is not None:
+            obs_acq_dates_as_str = sample[["TIMESTAMP"]].astype(str)
+            idx_range_to_consider = round(self.fraction_of_important_dates_to_keep * len(self.most_important_dates.index))
+            top_fraction_most_important_dates = self.most_important_dates.iloc[0:idx_range_to_consider]
+            indices_to_take = obs_acq_dates_as_str[["TIMESTAMP"]].isin(top_fraction_most_important_dates.index)
+            sample = sample.loc[indices_to_take["TIMESTAMP"]]
+            missing_key_dates_obs = idx_range_to_consider - len(sample.index)
 
         observation_dates = pd.DataFrame({
             "YEAR": sample["TIMESTAMP"].apply(lambda x: x.year),
@@ -303,7 +323,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         reflectances = (sample[BANDS] * NORMALIZING_FACTOR).to_numpy(dtype=np.float64)
         X = np.concatenate((observation_dates, reflectances), axis=1)
 
-        return X, label
+        return X, label, missing_key_dates_obs
 
     def applyclassmapping(self, nutzcodes):
         """uses a mapping table to replace nutzcodes (e.g. 451, 411) with class ids"""
@@ -330,19 +350,21 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         y = np.array([self.y[idx]] * X.shape[0])  # repeat y for each entry in x
 
-        if self.shuffle_sequences:
-            shuffled_indices = np.random.permutation(X.shape[0])
-            X = X[shuffled_indices]
-            positions = positions[shuffled_indices]
-            if str(parcel_id) in ["77137894", "75415581"]:
-                print("Shuffled positions for parcel {}".format(parcel_id))
-                print(positions)
-
         X = torch.from_numpy(X).type(torch.FloatTensor)
         y = torch.from_numpy(y).type(torch.LongTensor)
         positions = torch.from_numpy(positions).type(torch.LongTensor)
 
         return X, positions, y, parcel_id
+
+    def get_most_important_dates(self, most_important_dates_file):
+        if most_important_dates_file is None:
+            return None
+
+        most_important_dates_file = os.path.join(self.root, most_important_dates_file)
+        assert os.path.exists(most_important_dates_file)
+
+        most_important_dates = pd.read_csv(most_important_dates_file, index_col=0)
+        return most_important_dates
 
     def calculate_spectral_indices(self):
         """

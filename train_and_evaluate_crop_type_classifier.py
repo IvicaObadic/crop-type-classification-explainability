@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.sampler import RandomSampler
 
 from datasets.dataset_utils import *
+from datasets.util_functions import *
 from datasets.sequence_aggregator import *
 from models.CropTypeClassifier import *
 from models.LossFunctions import *
@@ -42,10 +43,12 @@ def parse_args():
     parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
-    parser.add_argument('--shuffle_sequences', action="store_true", help='whether to shuffle sequences during training and test time')
+    parser.add_argument('--most_important_dates_file', type=str, default="key_attention_dates.csv", help='file which contains the most important days in the calendar year')
+    parser.add_argument('--fraction_of_important_dates_to_keep', type=float, default=0.02, help='fraction of the most important days to use for every parcel')
 
     args, _ = parser.parse_known_args()
     return args
+
 
 def create_data_loader(dataset, batch_size=128, num_workers=4):
     return(torch.utils.data.DataLoader(
@@ -60,7 +63,11 @@ def train_and_evaluate_crop_classifier(args):
 
     class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(args.num_classes))
 
-    sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr, args.time_points_to_sample)
+    most_important_dates_file = args.most_important_dates_file
+    fraction_of_important_dates_to_keep = args.fraction_of_important_dates_to_keep
+    sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr,
+                                                      args.time_points_to_sample,
+                                                      most_important_dates_file is not None)
     num_layers_opts = [int(layer) for layer in args.num_layers.split(',')]
     num_heads_opts = [int(head) for head in args.num_heads.split(',')]
     model_dims_opts = [int(model_dim) for model_dim in args.model_dim.split(',')]
@@ -68,7 +75,8 @@ def train_and_evaluate_crop_classifier(args):
         classes_to_exclude = [class_to_exclude for class_to_exclude in args.classes_to_exclude.split(',')]
     else:
         classes_to_exclude = None
-    shuffle_sequences = args.shuffle_sequences
+
+
 
     for num_layers in num_layers_opts:
         for num_heads in num_heads_opts:
@@ -80,11 +88,10 @@ def train_and_evaluate_crop_classifier(args):
                         class_mapping,
                         sequence_aggregator,
                         classes_to_exclude,
-                        shuffle_sequences)
+                        most_important_dates_file,
+                        fraction_of_important_dates_to_keep)
 
-                    sequence_aggregator.set_timestamp(int(time.time()))
-
-                    #all pixels contain sequences of same length
+                    #all observation contain sequences of same length
                     sequence_length = train_dataset[0][0].shape[0]
                     num_classes = train_dataset.nclasses
                     crop_type_classifier = init_model_with_hyper_params(
@@ -95,21 +102,22 @@ def train_and_evaluate_crop_classifier(args):
                         num_layers,
                         num_heads)
 
-                    optimizer = ScheduledOptim(
-                        torch.optim.Adam(
+                    optimizer = ScheduledOptim(torch.optim.Adam(
                             filter(lambda x: x.requires_grad, crop_type_classifier.parameters()),
                             betas=(0.9, 0.98), eps=1e-09, weight_decay=0.000413),
                         crop_type_classifier.d_model, 4000)
 
-                    shuffling_label = "original_sequences"
-                    if shuffle_sequences:
-                        shuffling_label = "shuffled_sequences"
+                    with_most_important_dates = "all_dates"
+                    if most_important_dates_file is not None:
+                        with_most_important_dates = "{}_frac_of_dates".format(fraction_of_important_dates_to_keep)
+
+                    training_directory = os.path.join(args.results_root_dir, "{}_classes".format(num_classes))
                     training_directory = os.path.join(
-                        args.results_root_dir,
-                        "{}_classes".format(num_classes),
-                        shuffling_label,
+                        append_occluded_classes_label(training_directory, classes_to_exclude),
                         sequence_aggregator.get_label(),
-                        crop_type_classifier.get_label())
+                        crop_type_classifier.get_label(),
+                        with_most_important_dates,
+                        str(int(time.time())))
 
                     logger = Logger(modes=["train", "test"], rootpath=training_directory)
                     config = dict(

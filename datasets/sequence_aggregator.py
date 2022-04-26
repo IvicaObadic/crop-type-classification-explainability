@@ -11,10 +11,7 @@ class SequenceAggregator(ABC):
 
     def __init__(self):
         super(SequenceAggregator, self).__init__()
-        self.timestamp = None
-
-    def set_timestamp(self, timestamp):
-        self.timestamp = timestamp
+        self.num_training_times = 1
 
     @abstractmethod
     def aggregate_sequence(self, parcel_id, X, dataset):
@@ -48,8 +45,10 @@ class SequenceAggregator(ABC):
         return dates_with_timestamp_df["DAYS_SINCE_BEGINNING"].to_numpy(dtype=np.int16)
 
     def get_num_training_times(self):
-        return 1
+        return self.num_training_times
 
+    def set_num_training_times(self, num_training_times):
+        self.num_training_times = num_training_times
 
 class SequenceSampler(SequenceAggregator):
 
@@ -90,14 +89,13 @@ class SequenceSampler(SequenceAggregator):
 
     def get_label(self):
 
-        assert self.timestamp is not None, "The timestamp must always be set"
 
         type_of_sampler = "random"
         if self.fixed_sampling:
             type_of_sampler = "fixed"
         label = os.path.join(
             "sampling",
-            "{}_{}_obs_{}".format(type_of_sampler, self.time_points_to_sample, self.timestamp))
+            "{}_{}_obs".format(type_of_sampler, self.time_points_to_sample))
         return label
 
     def get_num_training_times(self):
@@ -172,12 +170,15 @@ class WeeklySequenceAggregator(SequenceAggregator):
     def get_label(self):
         return 'weekly_average'
 
-def resolve_sequence_aggregator(seq_aggr_name, time_points_to_sample=None):
+def resolve_sequence_aggregator(seq_aggr_name, time_points_to_sample=None, train_with_fraction_key_dates=None):
 
     if seq_aggr_name == "weekly_average":
         return WeeklySequenceAggregator()
     elif seq_aggr_name == "right_padding":
-        return SequencePadder()
+        sequence_padder = SequencePadder()
+        if train_with_fraction_key_dates:
+            sequence_padder.set_num_training_times(5)
+        return sequence_padder
     elif seq_aggr_name == "random_sampling":
         return SequenceSampler(time_points_to_sample=time_points_to_sample)
     else:

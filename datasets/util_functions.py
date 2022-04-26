@@ -1,6 +1,8 @@
+import os
 import pandas as pd
 
 from datasets.constants import *
+
 
 def add_timestamp_column_from_date_columns(input_df):
     """
@@ -15,3 +17,9 @@ def add_timestamp_column_from_date_columns(input_df):
         axis=1)
     input_df['TIMESTAMP'] = pd.to_datetime(input_df['TIMESTAMP'])
     return input_df
+
+
+def append_occluded_classes_label(label_str, classes_to_occlude):
+    if classes_to_occlude is None:
+        return label_str
+    return os.path.join(label_str, "wo_" + ",".join(classes_to_occlude))
