@@ -26,15 +26,13 @@ def read_classification_results(classification_results_dir):
 
 
 def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
-    print(os.getcwd())
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("frac_of_dates"):
             frac_dates = root_perc_result_dir.split("_")[0]
             root_perc_result_path = os.path.join(perc_important_dates_results_root_dir, root_perc_result_dir)
             for root_perc_result_dir_path in os.listdir(root_perc_result_path):
-                model_results_dir = os.path.join(root_perc_result_path, root_perc_result_dir_path, "obs_aq_date",
-                                                 "layers=1,heads=1,emb_dim=128")
+                model_results_dir = os.path.join(root_perc_result_path, root_perc_result_dir_path)
                 classification_results = read_classification_results(model_results_dir)
                 if classification_results is not None:
                     perc_dates_results.append((int(frac_dates * 100), classification_results[0], classification_results[1], "Percentage of Dates"))
