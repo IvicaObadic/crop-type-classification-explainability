@@ -29,13 +29,14 @@ def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("frac_of_dates"):
-            frac_dates = root_perc_result_dir.split("_")[0]
+            frac_dates = float(root_perc_result_dir.split("_")[0])
+            print(frac_dates)
             root_perc_result_path = os.path.join(perc_important_dates_results_root_dir, root_perc_result_dir)
             for root_perc_result_dir_path in os.listdir(root_perc_result_path):
                 model_results_dir = os.path.join(root_perc_result_path, root_perc_result_dir_path)
                 classification_results = read_classification_results(model_results_dir)
                 if classification_results is not None:
-                    perc_dates_results.append((int(frac_dates * 100), classification_results[0], classification_results[1], "Percentage of Dates"))
+                    perc_dates_results.append((frac_dates * 100, classification_results[0], classification_results[1], "Percentage of Dates"))
 
     perc_dates_results = pd.DataFrame(data=perc_dates_results,
                                       columns=["Percent of observations", "Class accuracy", "F1 Score","Model type"])
