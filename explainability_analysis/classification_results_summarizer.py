@@ -1,4 +1,19 @@
 import os
+import argparse
+
+
+def parse_args():
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--perc_important_dates_results_root_dir',
+        help='the root folder of the dataset',
+        default="/home/results/crop-type-classification-explainability/12_classes/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/")
+
+    args, _ = parser.parse_known_args()
+    return args
+
 
 def read_classification_results(classification_results_dir):
     classification_results_path = os.path.join(classification_results_dir, "predictions", "classification_metrics.csv")
@@ -8,7 +23,7 @@ def read_classification_results(classification_results_dir):
     return None
 
 
-def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir="/mnt2/ivica/results/crop-type-classification-explainability/12_classes/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/"):
+def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("frac_of_dates"):
@@ -27,4 +42,5 @@ def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir
     return perc_dates_results
 
 if __name__ == "__main__":
-    collect_frac_of_dates_accuracy_results()
+    args = parse_args()
+    collect_frac_of_dates_accuracy_results(args.perc_important_dates_results_root_dir)
