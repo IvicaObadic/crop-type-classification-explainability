@@ -8,7 +8,7 @@ def read_classification_results(classification_results_dir):
     return None
 
 
-def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir="/home/results/crop-type-classification-explainability/12_classes/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/"):
+def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir="/mnt2/ivica/results/crop-type-classification-explainability/12_classes/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/"):
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("frac_of_dates"):
