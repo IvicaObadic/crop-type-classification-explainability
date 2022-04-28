@@ -270,7 +270,8 @@ def read_classification_results(classification_results_dir):
         return classification_data[2], classification_data[6]
     return None
 
-def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir="/home/results//crop-type-classification-explainability/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128"):
+
+def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir="/home/results//crop-type-classification-explainability/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/"):
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("frac_of_dates"):
@@ -287,3 +288,6 @@ def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir
                                       columns=["Percent of observations", "Class accuracy", "F1 Score","Model type"])
     perc_dates_results.to_csv(os.path.join(perc_important_dates_results_root_dir, "perc_accuracy_results.csv"))
     return perc_dates_results
+
+if __name__ == "__main__":
+    collect_frac_of_dates_accuracy_results()
