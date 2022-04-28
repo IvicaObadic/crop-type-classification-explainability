@@ -1,5 +1,7 @@
 import os
 import argparse
+import pandas as pd
+import numpy as np
 
 
 def parse_args():
@@ -24,6 +26,7 @@ def read_classification_results(classification_results_dir):
 
 
 def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
+    print(os.getcwd())
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("frac_of_dates"):
