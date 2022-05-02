@@ -23,3 +23,9 @@ def append_occluded_classes_label(label_str, classes_to_occlude):
     if classes_to_occlude is None:
         return label_str
     return os.path.join(label_str, "wo_" + ",".join(classes_to_occlude))
+
+
+def append_spectral_diff_label(label_str, with_spectral_diff_as_input):
+    if not with_spectral_diff_as_input:
+        return label_str
+    return os.path.join(label_str, "with_spectral_diff_as_input")

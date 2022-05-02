@@ -28,6 +28,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             validfraction=0.1,
             most_important_dates_file = None,
             fraction_of_important_dates_to_keep=1.0,
+            with_spectral_diff_as_input=False,
             cache=True,
             seed=0):
         assert (mode in ["trainvalid", "traintest"] and scheme=="random") or (mode is None and scheme=="blocks") # <- if scheme random mode is required, else None
@@ -78,6 +79,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.partition = partition
         self.most_important_dates = self.get_most_important_dates(most_important_dates_file)
         self.fraction_of_important_dates_to_keep = fraction_of_important_dates_to_keep
+        self.with_spectral_diff_as_input = with_spectral_diff_as_input
 
         self.data_folder = "{root}/csv/{region}".format(root=self.root, region=self.region)
 
@@ -87,10 +89,9 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             self.root,
             "npy",
             "{}_classes".format(self.nclasses))
-        self.cache = os.path.join(append_occluded_classes_label(self.cache, classes_to_exclude),
-                                  scheme,
-                                  region,
-                                  partition)
+        self.cache = append_occluded_classes_label(self.cache, classes_to_exclude)
+        self.cache = append_spectral_diff_label(self.cache, self.with_spectral_diff_as_input)
+        self.cache = os.path.join(self.cache, scheme, region, partition)
 
         if self.most_important_dates is not None:
             self.cache = os.path.join(self.cache,
@@ -283,7 +284,15 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         sample = pd.read_csv(csv_file, index_col=0)
 
-        #the timestamp column has no column name in the csv file. Set the name and
+        # subset only the relevant columns in the dataframe and remove rows with missing values
+        columns_to_take = ["label"]
+        columns_to_take.extend(BANDS)
+        sample = sample[columns_to_take].dropna()
+
+        if sample.empty:
+            return None, None, None
+
+        #the timestamp column has no column name in the csv file. Set the name and index
         sample.rename_axis("TIMESTAMP", inplace=True)
         sample.reset_index(inplace=True)
         #extract the first timestamp
@@ -291,16 +300,16 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         #convert the string timestamp column to a pandas datetime column
         sample["TIMESTAMP"] = pd.to_datetime(sample["TIMESTAMP"]).dt.date
 
-        #subset only the relevant columns in the dataframe and remove rows with missing values
-        columns_to_take = ["TIMESTAMP", "label"]
-        columns_to_take.extend(BANDS)
-        sample = sample[columns_to_take].dropna()
-
-        if sample.empty:
-            return None, None, None
-
         label = sample["label"].values
         sample = sample.groupby('TIMESTAMP').mean().reset_index()
+        sample[BANDS] = sample[BANDS] * NORMALIZING_FACTOR
+
+        if self.with_spectral_diff_as_input:
+            #the row with index 0 contains nan values due to no previous rows
+            sample_with_spectral_diff = sample.diff().iloc[1:]
+            sample = sample.iloc[1:]
+            sample[BANDS] = sample_with_spectral_diff[BANDS]
+
         missing_key_dates_obs = 0
         if self.most_important_dates is not None:
             obs_acq_dates_as_str = sample[["TIMESTAMP"]].astype(str)
@@ -320,7 +329,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         #create the resulting dataset consisting of the date and the spectral band values
         #scale the values in range [0 (everything is absorbed) - 1 (everything is reflected)]
-        reflectances = (sample[BANDS] * NORMALIZING_FACTOR).to_numpy(dtype=np.float64)
+        reflectances = (sample[BANDS]).to_numpy(dtype=np.float64)
         X = np.concatenate((observation_dates, reflectances), axis=1)
 
         return X, label, missing_key_dates_obs

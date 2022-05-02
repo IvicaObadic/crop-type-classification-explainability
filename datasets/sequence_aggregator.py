@@ -10,7 +10,7 @@ from datasets.util_functions import add_timestamp_column_from_date_columns
 class SequenceAggregator(ABC):
 
     def __init__(self):
-        super(SequenceAggregator, self).__init__()
+        super().__init__()
         self.num_training_times = 1
 
     @abstractmethod
@@ -99,7 +99,8 @@ class SequenceSampler(SequenceAggregator):
         return label
 
     def get_num_training_times(self):
-        return 5
+        return self.num_training_times
+
 
 class SequencePadder(SequenceAggregator):
 
@@ -107,7 +108,7 @@ class SequencePadder(SequenceAggregator):
         """
         Initializes the padding sequence aggregator.
         """
-        super(SequenceAggregator, self).__init__()
+        super().__init__()
 
     def aggregate_sequence(self, parcel_id, X, dataset):
         """

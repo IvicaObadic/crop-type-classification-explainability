@@ -15,7 +15,8 @@ def get_partitioned_dataset(
         sequence_aggregator,
         classes_to_exclude,
         most_important_dates_file=None,
-        fraction_of_important_dates_to_keep = 1.0,
+        fraction_of_important_dates_to_keep=1.0,
+        with_spectral_diff_as_input=False,
         target_regions=AVAILABLE_REGIONS):
     assert len(target_regions) > 0, 'At least one region must be supplied'
 
@@ -39,7 +40,8 @@ def get_partitioned_dataset(
                                              scheme="blocks",
                                              seed=seconds_since_epoch_start,
                                              most_important_dates_file = most_important_dates_file,
-                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep)
+                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
+                                             with_spectral_diff_as_input=with_spectral_diff_as_input)
         valid_dataset = BavarianCropsDataset(root=root,
                                              partition="valid",
                                              classmapping=class_mapping,
@@ -49,7 +51,8 @@ def get_partitioned_dataset(
                                              scheme="blocks",
                                              seed=seconds_since_epoch_start,
                                              most_important_dates_file=most_important_dates_file,
-                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep)
+                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
+                                             with_spectral_diff_as_input=with_spectral_diff_as_input)
         test_dataset = BavarianCropsDataset(root=root,
                                             partition="test",
                                             classmapping=class_mapping,
@@ -59,7 +62,8 @@ def get_partitioned_dataset(
                                             scheme="blocks",
                                             seed=seconds_since_epoch_start,
                                             most_important_dates_file=most_important_dates_file,
-                                            fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep)
+                                            fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
+                                            with_spectral_diff_as_input=with_spectral_diff_as_input)
 
         raw_sequence_lengths = np.append(raw_sequence_lengths, train_dataset.sequencelengths)
         raw_sequence_lengths = np.append(raw_sequence_lengths, valid_dataset.sequencelengths)

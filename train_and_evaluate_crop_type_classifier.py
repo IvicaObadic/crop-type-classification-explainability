@@ -21,13 +21,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--dataset_folder', help='the root folder of the dataset', default="/home/datasets/BavarianCrops")
+        '--dataset_folder', help='the root folder of the dataset', default="C:/Users/datasets/BavarianCrops")
     parser.add_argument(
         '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
     parser.add_argument(
         '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
-        '--results_root_dir', help='the directory where the results are stored', default="/home/results/crop-type-classification-explainability")
+        '--results_root_dir', help='the directory where the results are stored', default="/C:/Users/results/crop-type-classification-explainability/")
     parser.add_argument(
         '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
@@ -40,12 +40,12 @@ def parse_args():
     parser.add_argument(
         '--num_heads', type=str, default="1", help='the number of heads in each layer of the model. Multiple values should be separated with ,')
     parser.add_argument('--model_dim', type=str, default="128", help='embedding dimension of the model. Multiple values should be separated with ,')
-    parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
+    parser.add_argument('--save_weights_and_gradients', default=True, action="store_true", help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
     parser.add_argument('--most_important_dates_file', type=str, default=None, help='file which contains the most important days in the calendar year')
     parser.add_argument('--fraction_of_important_dates_to_keep', type=float, default=0.02, help='fraction of the most important days to use for every parcel')
-
+    parser.add_argument('--with_spectral_diff_as_input', action="store_true", help='store the weights and gradients during test time')
     args, _ = parser.parse_known_args()
     return args
 
@@ -89,7 +89,8 @@ def train_and_evaluate_crop_classifier(args):
                         sequence_aggregator,
                         classes_to_exclude,
                         most_important_dates_file,
-                        fraction_of_important_dates_to_keep)
+                        fraction_of_important_dates_to_keep,
+                        args.with_spectral_diff_as_input)
 
                     #all observation contain sequences of same length
                     sequence_length = train_dataset[0][0].shape[0]
@@ -112,8 +113,10 @@ def train_and_evaluate_crop_classifier(args):
                         with_most_important_dates = "{}_frac_of_dates".format(fraction_of_important_dates_to_keep)
 
                     training_directory = os.path.join(args.results_root_dir, "{}_classes".format(num_classes))
+                    training_directory = append_occluded_classes_label(training_directory, classes_to_exclude)
+                    training_directory = append_spectral_diff_label(training_directory, args.with_spectral_diff_as_input)
                     training_directory = os.path.join(
-                        append_occluded_classes_label(training_directory, classes_to_exclude),
+                        training_directory,
                         sequence_aggregator.get_label(),
                         crop_type_classifier.get_label(),
                         with_most_important_dates,
