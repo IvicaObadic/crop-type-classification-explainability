@@ -16,15 +16,15 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import MinMaxScaler
 
-from explainability_analysis.util import timeframe_columns
+from .util import timeframe_columns
 from models.CropTypeClassifier import *
 
 from datasets import dataset_utils
 from datasets import sequence_aggregator
 from datasets.util_functions import *
 
-from explainability_analysis.visualization_functions import *
-from explainability_analysis.crop_spectral_signature_analysis import *
+from .visualization_functions import *
+from .crop_spectral_signature_analysis import *
 
 
 def parse_args():
