@@ -7,6 +7,8 @@ import pickle
 import torch
 from torch.utils.data.sampler import RandomSampler
 import collections
+import argparse
+
 
 from sklearn.cluster import KMeans
 from sklearn.metrics import *
@@ -17,6 +19,30 @@ from sklearn.preprocessing import MinMaxScaler
 from explainability_analysis.util import timeframe_columns
 from models.CropTypeClassifier import *
 
+from datasets import dataset_utils
+from datasets import sequence_aggregator
+from datasets.util_functions import *
+
+from explainability_analysis.visualization_functions import *
+from explainability_analysis.crop_spectral_signature_analysis import *
+
+
+def parse_args():
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--root_results_path',
+        help='the root folder of the trained model')
+    parser.add_argument(
+        '--classes_to_exclude',
+        default=None,
+        help='occluded classes')
+    parser.add_argument('--with_spectral_diff_as_input', action="store_true",
+                        help='store the weights and gradients during test time')
+
+    args, _ = parser.parse_known_args()
+    return args
 
 def summarize_attention_weights_as_feature_embeddings(
         attn_weights_root_dir,
@@ -24,7 +50,7 @@ def summarize_attention_weights_as_feature_embeddings(
         target_head_idx=-1,
         summary_fn="sum"):
 
-    feature_embeddings = dict()
+    feature_embeddings = []
 
     attention_weights_files = [attn_weight_file
                                for attn_weight_file in os.listdir(attn_weights_root_dir)
@@ -69,12 +95,51 @@ def summarize_attention_weights_as_feature_embeddings(
         else:
             feature_embeddings_for_parcel = relevant_attention_weights[relevant_indices].mean(dim=1)
 
+
         feature_embeddings_for_parcel = feature_embeddings_for_parcel.cpu().detach().numpy()
-        feature_embeddings_for_parcel = pd.DataFrame(data=feature_embeddings_for_parcel, columns=attn_weights_df.columns)
-        feature_embeddings[parcel_id] = feature_embeddings_for_parcel
+        feature_embeddings_for_parcel = pd.DataFrame(index=[parcel_id],
+                                                     data=feature_embeddings_for_parcel,
+                                                     columns=attn_weights_df.columns)
+        feature_embeddings_for_parcel = pd.melt(feature_embeddings_for_parcel, var_name="Date", value_name="Attention", ignore_index=False)
+        feature_embeddings.append(feature_embeddings_for_parcel)
 
-    return feature_embeddings
+    print("Concatenating the attention weights of the different parcels into a single dataframe")
+    return pd.concat(feature_embeddings)
 
+
+def get_temporal_attn_weights(root_results_path, classes_to_exclude=None, with_spectral_diff_as_input=False):
+    model_classes = 12
+    if classes_to_exclude is not None:
+        model_classes = model_classes - len(classes_to_exclude)
+
+    model_conf_path = "{}/{}_classes/".format(root_results_path, model_classes)
+    model_conf_path = append_occluded_classes_label(model_conf_path, classes_to_exclude)
+    model_conf_path = append_spectral_diff_label(model_conf_path, with_spectral_diff_as_input)
+    model_conf_path = os.path.join(model_conf_path, "right_padding/obs_aq_date/layers=1,heads=1,emb_dim=128/all_dates/")
+    model_path = os.path.join(model_conf_path, os.listdir(model_conf_path)[0])
+
+    predictions_path = os.path.join(model_path, "predictions")
+    attn_weights_path = os.path.join(predictions_path, "attn_weights", "postprocessed")
+    total_temporal_attention_per_parcel_file = os.path.join(attn_weights_path, "parcel_temporal_attention.csv")
+    if os.path.exists(total_temporal_attention_per_parcel_file):
+        return pd.read_csv(total_temporal_attention_per_parcel_file)
+
+    predicted_vs_true_results = pd.read_csv(os.path.join(predictions_path, "predicted_vs_true.csv"), index_col=0)
+    predicted_vs_true_results.index = predicted_vs_true_results.index.map(str)
+    classmapping = pd.read_csv(os.path.join(predictions_path, "confusion_matrix.csv")).columns
+    predicted_vs_true_results["TRUE_CROP_TYPE"] = predicted_vs_true_results["LABEL"].apply(lambda x: classmapping[x])
+    predicted_vs_true_results["PREDICTED_CROP_TYPE"] = predicted_vs_true_results["PREDICTION"].apply(lambda x: classmapping[x])
+
+    total_temporal_attention_per_parcel = summarize_attention_weights_as_feature_embeddings(attn_weights_path,
+                                                                                            "layer_0",
+                                                                                             summary_fn="sum")
+    total_temporal_attention_per_parcel = total_temporal_attention_per_parcel.join(predicted_vs_true_results, how="inner")
+    total_temporal_attention_per_parcel["Date"] = pd.to_datetime(
+        total_temporal_attention_per_parcel["Date"].apply(lambda x: "{}-2018".format(x)))
+    total_temporal_attention_per_parcel.drop(["LABEL", "PREDICTION"], axis=1, inplace=True)
+
+    total_temporal_attention_per_parcel.to_csv(total_temporal_attention_per_parcel_file)
+    return total_temporal_attention_per_parcel
 
 def calc_and_save_weekly_average_attn_weights(attn_weights_feature_embeddings_dict, root_dir_path=None):
     weekly_average_attn_weights_per_parcel = dict()
@@ -95,6 +160,7 @@ def calc_and_save_weekly_average_attn_weights(attn_weights_feature_embeddings_di
         weekly_average_attn_weights_per_parcel[parcel_id] = average_total_weekly_attention
         if root_dir_path is not None:
             average_total_weekly_attention.to_csv(os.path.join(root_dir_path, "{}.csv".format(parcel_id)))
+
     return weekly_average_attn_weights_per_parcel
 
 
@@ -181,25 +247,6 @@ def get_avg_attn_weights_and_sd(attn_weights_root_dir, predictions, class_names,
     return avg_attn_weights_per_class, sd_attn_weights_per_class
 
 
-def extract_attn_weights_in_time_frame(attn_weights_per_class, target_classes, start_idx, end_idx):
-    class_labels = []
-    target_attn_weights = dict()
-    for class_label in attn_weights_per_class.keys():
-        class_attn_weights = attn_weights_per_class[class_label]
-        if class_label in target_classes:
-            for layer in class_attn_weights.keys():
-                class_attn_weights_per_layer = class_attn_weights[layer]
-                relevant_attn_weights = class_attn_weights_per_layer[:, :, start_idx:end_idx].detach().cpu().numpy()
-                if layer not in target_attn_weights:
-                    target_attn_weights[layer] = relevant_attn_weights
-                else:
-                    target_attn_weights[layer] = np.hstack((target_attn_weights[layer], relevant_attn_weights))
-
-            class_labels.append(class_label)
-
-    return target_attn_weights, class_labels
-
-
 def calc_attn_weight_corr_per_crop_type(spectral_indices, attn_weights_feature_embeddings):
     crop_type_attn_weights_spectral_bands = dict()
     for parcel_id in spectral_indices.keys():
@@ -226,6 +273,27 @@ def calc_attn_weight_corr_per_crop_type(spectral_indices, attn_weights_feature_e
         crop_type_corr[target_class] = attn_spectral_bands_corr
 
     return crop_type_corr
+
+
+
+
+def get_dataset_spectral_indices(classes_to_exclude=None,
+                                 dataset_folder="C:/Users/datasets/BavarianCrops/"):
+
+    base_num_classes = 12
+    class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(base_num_classes))
+    train_set, valid_set, test_set = dataset_utils.get_partitioned_dataset(
+        dataset_folder,
+        class_mapping,
+        sequence_aggregator.SequencePadder(),
+        classes_to_exclude)
+
+    spectral_indices = test_set.calculate_spectral_indices()
+    crop_type_spectral_signature = calc_spectral_signature_per_time_frame(spectral_indices)
+    # crop_type_spectral_signature["WEEK"] = crop_type_spectral_signature["WEEK"].map(lambda x: week_mapping[int(x) - 1])
+    return crop_type_spectral_signature
+
+
 
 def calculate_weights_gradients_correlations(predictions_path, predictions):
     parcel_ids = []
@@ -263,3 +331,6 @@ def calculate_weights_gradients_correlations(predictions_path, predictions):
 
     return result
 
+if __name__ == "__main__":
+    args = parse_args()
+    get_temporal_attn_weights(args.root_results_path, args.classes_to_exclude, args.with_spectral_diff_as_input)
