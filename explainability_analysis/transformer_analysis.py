@@ -27,23 +27,6 @@ from explainability_analysis.visualization_functions import *
 from explainability_analysis.crop_spectral_signature_analysis import *
 
 
-def parse_args():
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        '--root_results_path',
-        help='the root folder of the trained model')
-    parser.add_argument(
-        '--classes_to_exclude',
-        default=None,
-        help='occluded classes')
-    parser.add_argument('--with_spectral_diff_as_input', action="store_true",
-                        help='store the weights and gradients during test time')
-
-    args, _ = parser.parse_known_args()
-    return args
-
 def summarize_attention_weights_as_feature_embeddings(
         attn_weights_root_dir,
         target_layer,
@@ -330,7 +313,3 @@ def calculate_weights_gradients_correlations(predictions_path, predictions):
          })
 
     return result
-
-if __name__ == "__main__":
-    args = parse_args()
-    get_temporal_attn_weights(args.root_results_path, args.classes_to_exclude, args.with_spectral_diff_as_input)
