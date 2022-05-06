@@ -93,6 +93,7 @@ def summarize_attention_weights_as_feature_embeddings(
 def get_temporal_attn_weights(root_results_path, classes_to_exclude=None, with_spectral_diff_as_input=False):
     model_classes = 12
     if classes_to_exclude is not None:
+        classes_to_exclude = [class_to_exclude for class_to_exclude in classes_to_exclude.split(',')]
         model_classes = model_classes - len(classes_to_exclude)
 
     model_conf_path = "{}/{}_classes/".format(root_results_path, model_classes)
@@ -105,7 +106,8 @@ def get_temporal_attn_weights(root_results_path, classes_to_exclude=None, with_s
     attn_weights_path = os.path.join(predictions_path, "attn_weights", "postprocessed")
     total_temporal_attention_per_parcel_file = os.path.join(attn_weights_path, "parcel_temporal_attention.csv")
     if os.path.exists(total_temporal_attention_per_parcel_file):
-        return pd.read_csv(total_temporal_attention_per_parcel_file)
+        print("Reading the precomputed attention weights from {}".format(total_temporal_attention_per_parcel_file))
+        return pd.read_csv(total_temporal_attention_per_parcel_file, index_col=0)
 
     predicted_vs_true_results = pd.read_csv(os.path.join(predictions_path, "predicted_vs_true.csv"), index_col=0)
     predicted_vs_true_results.index = predicted_vs_true_results.index.map(str)
@@ -118,7 +120,7 @@ def get_temporal_attn_weights(root_results_path, classes_to_exclude=None, with_s
                                                                                              summary_fn="sum")
     total_temporal_attention_per_parcel = total_temporal_attention_per_parcel.join(predicted_vs_true_results, how="inner")
     total_temporal_attention_per_parcel["Date"] = pd.to_datetime(
-        total_temporal_attention_per_parcel["Date"].apply(lambda x: "{}-2018".format(x)))
+        total_temporal_attention_per_parcel["Date"].apply(lambda x: "{}-2018".format(x)), format="%d-%m-%Y")
     total_temporal_attention_per_parcel.drop(["LABEL", "PREDICTION"], axis=1, inplace=True)
 
     total_temporal_attention_per_parcel.to_csv(total_temporal_attention_per_parcel_file)
