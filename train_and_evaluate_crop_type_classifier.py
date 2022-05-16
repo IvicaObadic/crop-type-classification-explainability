@@ -21,13 +21,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--dataset_folder', help='the root folder of the dataset', default="C:/Users/datasets/BavarianCrops")
+        '--dataset_folder', help='the root folder of the dataset', default="/home/datasets/BavarianCrops")
     parser.add_argument(
         '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
     parser.add_argument(
         '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
-        '--results_root_dir', help='the directory where the results are stored', default="C:/Users/results/crop-type-classification-explainability/")
+        '--results_root_dir', help='the directory where the results are stored', default="/home/results/crop-type-classification-explainability/")
     parser.add_argument(
         '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
