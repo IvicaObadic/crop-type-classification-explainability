@@ -95,7 +95,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         if self.most_important_dates is not None:
             self.cache = os.path.join(self.cache,
-                                      "frac_most_important_dates",
+                                      "frac_most_important_dates_set2",
                                       str(self.fraction_of_important_dates_to_keep))
 
         print("read {} classes".format(self.nclasses))
@@ -303,12 +303,13 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         label = sample["label"].values
         sample = sample.groupby('TIMESTAMP').mean().reset_index()
         sample[BANDS] = sample[BANDS] * NORMALIZING_FACTOR
-
+        final_bands_to_use = BANDS
         if self.with_spectral_diff_as_input:
             #the row with index 0 contains nan values due to no previous rows
-            sample_with_spectral_diff = sample.diff().iloc[1:]
-            sample = sample.iloc[1:]
-            sample[BANDS] = sample_with_spectral_diff[BANDS]
+            sample[BANDS] = sample[BANDS].diff(axis=1)
+            # the first column is NaN column because it has no previous element to calculate the difference
+            sample = sample.dropna(axis=1)
+            final_bands_to_use = BANDS[1:]
 
         missing_key_dates_obs = 0
         if self.most_important_dates is not None:
@@ -329,7 +330,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         #create the resulting dataset consisting of the date and the spectral band values
         #scale the values in range [0 (everything is absorbed) - 1 (everything is reflected)]
-        reflectances = (sample[BANDS]).to_numpy(dtype=np.float64)
+        reflectances = (sample[final_bands_to_use]).to_numpy(dtype=np.float64)
         X = np.concatenate((observation_dates, reflectances), axis=1)
 
         return X, label, missing_key_dates_obs
@@ -398,10 +399,10 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
                                          (parcel_reflectance[NEAR_INFRARED_BAND] + parcel_reflectance[VISIBLE_RED_BAND])
             parcel_reflectance["CLASS"] = self.classname[self.y[idx]]
             parcel_reflectance["PARCEL_ID"] = parcel_id
-            parcel_reflectance.set_index("TIMESTAMP", inplace=True)
-
+            parcel_reflectance.set_index("PARCEL_ID", inplace=True)
 
             spectral_indices_dfs.append(parcel_reflectance)
 
-
-        return pd.concat(spectral_indices_dfs).reset_index()
+        parcel_spectral_indices = pd.concat(spectral_indices_dfs)
+        parcel_spectral_indices["Date"] = pd.to_datetime(parcel_spectral_indices["TIMESTAMP"], format="%Y-%m-%d")
+        return parcel_spectral_indices

@@ -262,21 +262,7 @@ def calc_attn_weight_corr_per_crop_type(spectral_indices, attn_weights_feature_e
 
 
 
-def get_dataset_spectral_indices(classes_to_exclude=None,
-                                 dataset_folder="C:/Users/datasets/BavarianCrops/"):
 
-    base_num_classes = 12
-    class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(base_num_classes))
-    train_set, valid_set, test_set = dataset_utils.get_partitioned_dataset(
-        dataset_folder,
-        class_mapping,
-        sequence_aggregator.SequencePadder(),
-        classes_to_exclude)
-
-    spectral_indices = test_set.calculate_spectral_indices()
-    crop_type_spectral_signature = calc_spectral_signature_per_time_frame(spectral_indices)
-    # crop_type_spectral_signature["WEEK"] = crop_type_spectral_signature["WEEK"].map(lambda x: week_mapping[int(x) - 1])
-    return crop_type_spectral_signature
 
 
 

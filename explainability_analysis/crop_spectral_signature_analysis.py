@@ -1,5 +1,9 @@
 import pandas as pd
 import numpy as np
+import os
+from datasets import dataset_utils
+from datasets import sequence_aggregator
+from datasets.util_functions import *
 
 
 def calc_spectral_signature_per_time_frame(
@@ -19,6 +23,19 @@ def calc_spectral_signature_per_time_frame(
     return spectral_indices_per_parcel.groupby([agg_variable, aggregation_time_frame]).\
         agg("mean").reset_index()
 
+def get_dataset_spectral_indices(dataset_folder="C:/Users/datasets/BavarianCrops/", classes_to_exclude=None):
+
+    base_num_classes = 12
+    class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(base_num_classes))
+    train_set, valid_set, test_set = dataset_utils.get_partitioned_dataset(
+        dataset_folder,
+        class_mapping,
+        sequence_aggregator.SequencePadder(),
+        classes_to_exclude)
+
+    spectral_indices = test_set.calculate_spectral_indices()
+
+    return spectral_indices
 
 def get_top_NDVI_obs_per_parcel(spectral_indices):
     healthy_vegetation_samples = None

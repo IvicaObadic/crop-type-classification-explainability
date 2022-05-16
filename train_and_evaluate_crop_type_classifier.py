@@ -76,8 +76,6 @@ def train_and_evaluate_crop_classifier(args):
     else:
         classes_to_exclude = None
 
-
-
     for num_layers in num_layers_opts:
         for num_heads in num_heads_opts:
             for model_dim in model_dims_opts:
@@ -110,7 +108,7 @@ def train_and_evaluate_crop_classifier(args):
 
                     with_most_important_dates = "all_dates"
                     if most_important_dates_file is not None:
-                        with_most_important_dates = "{}_frac_of_dates".format(fraction_of_important_dates_to_keep)
+                        with_most_important_dates = "{}_frac_of_dates_set2".format(fraction_of_important_dates_to_keep)
 
                     training_directory = os.path.join(args.results_root_dir, "{}_classes".format(num_classes))
                     training_directory = append_occluded_classes_label(training_directory, classes_to_exclude)
