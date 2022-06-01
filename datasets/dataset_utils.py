@@ -29,8 +29,6 @@ def get_partitioned_dataset(
     for region in target_regions:
         assert region in AVAILABLE_REGIONS, 'The region must be in one of the predefined regions'
 
-        seconds_since_epoch_start = int(time.time())
-
         train_dataset = BavarianCropsDataset(root=root,
                                              partition="train",
                                              classmapping=class_mapping,
@@ -38,7 +36,6 @@ def get_partitioned_dataset(
                                              sequence_aggregator=sequence_aggregator,
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
-                                             seed=seconds_since_epoch_start,
                                              most_important_dates_file = most_important_dates_file,
                                              fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
                                              with_spectral_diff_as_input=with_spectral_diff_as_input)
@@ -49,7 +46,6 @@ def get_partitioned_dataset(
                                              sequence_aggregator=sequence_aggregator,
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
-                                             seed=seconds_since_epoch_start,
                                              most_important_dates_file=most_important_dates_file,
                                              fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
                                              with_spectral_diff_as_input=with_spectral_diff_as_input)
@@ -60,7 +56,6 @@ def get_partitioned_dataset(
                                             sequence_aggregator=sequence_aggregator,
                                             classes_to_exclude=classes_to_exclude,
                                             scheme="blocks",
-                                            seed=seconds_since_epoch_start,
                                             most_important_dates_file=most_important_dates_file,
                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
                                             with_spectral_diff_as_input=with_spectral_diff_as_input)

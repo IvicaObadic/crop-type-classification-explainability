@@ -1,7 +1,8 @@
 import os
+import numpy
+import random
 import torch
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import RandomSampler
 
 from datasets.dataset_utils import *
 from datasets.util_functions import *
@@ -15,6 +16,7 @@ from utils.trainer import Trainer
 from predict import *
 
 import argparse
+
 
 def parse_args():
 
@@ -50,12 +52,24 @@ def parse_args():
     return args
 
 
+def set_seed(seed=0):
+    random.seed(seed)
+    numpy.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+
 def create_data_loader(dataset, batch_size=128, num_workers=4):
-    return(torch.utils.data.DataLoader(
-        dataset=dataset,
-        sampler=RandomSampler(dataset),
-        batch_size=batch_size,
-        num_workers=num_workers))
+    def seed_worker(worker_id):
+        worker_seed = torch.initial_seed() % 2 ** 32
+        numpy.random.seed(worker_seed)
+        random.seed(worker_seed)
+
+    g = torch.Generator()
+    g.manual_seed(0)
+
+    return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, worker_init_fn=seed_worker, generator=g)
 
 def train_and_evaluate_crop_classifier(args):
 
@@ -93,6 +107,8 @@ def train_and_evaluate_crop_classifier(args):
                     #all observation contain sequences of same length
                     sequence_length = train_dataset[0][0].shape[0]
                     num_classes = train_dataset.nclasses
+
+                    set_seed()
                     crop_type_classifier = init_model_with_hyper_params(
                         sequence_length,
                         num_classes,
