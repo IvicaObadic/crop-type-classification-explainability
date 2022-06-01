@@ -58,7 +58,7 @@ def set_seed(seed=0):
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
     if torch.cuda.is_available():
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.benchmark=False
 
 def create_data_loader(dataset, batch_size=128, num_workers=4):
     def seed_worker(worker_id):
