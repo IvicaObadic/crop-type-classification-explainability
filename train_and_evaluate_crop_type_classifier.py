@@ -58,6 +58,7 @@ def set_seed(seed=0):
     torch.manual_seed(seed)
     # torch.use_deterministic_algorithms(True)
     if torch.cuda.is_available():
+        #source: https://discuss.pytorch.org/t/torch-deterministic-algorithms-error/125200/6
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 

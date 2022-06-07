@@ -10,6 +10,9 @@ def parse_args():
         '--root_results_path',
         help='the root folder of the trained model')
     parser.add_argument(
+        '--model_timestamp',
+        help='the timestamp of the trained model')
+    parser.add_argument(
         '--classes_to_exclude',
         default=None,
         help='occluded classes')
@@ -21,4 +24,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    get_temporal_attn_weights(args.root_results_path, args.classes_to_exclude, args.with_spectral_diff_as_input)
+    get_temporal_attn_weights(args.root_results_path,
+                              args.model_timestamp,
+                              args.classes_to_exclude,
+                              args.with_spectral_diff_as_input)

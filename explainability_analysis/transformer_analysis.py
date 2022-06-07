@@ -90,7 +90,7 @@ def summarize_attention_weights_as_feature_embeddings(
     return pd.concat(feature_embeddings)
 
 
-def get_temporal_attn_weights(root_results_path, classes_to_exclude=None, with_spectral_diff_as_input=False):
+def get_temporal_attn_weights(root_results_path, model_timestamp, classes_to_exclude=None, with_spectral_diff_as_input=False):
     model_classes = 12
     if classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in classes_to_exclude.split(',')]
@@ -100,7 +100,7 @@ def get_temporal_attn_weights(root_results_path, classes_to_exclude=None, with_s
     model_conf_path = append_occluded_classes_label(model_conf_path, classes_to_exclude)
     model_conf_path = append_spectral_diff_label(model_conf_path, with_spectral_diff_as_input)
     model_conf_path = os.path.join(model_conf_path, "right_padding/obs_aq_date/layers=1,heads=1,emb_dim=128/all_dates/")
-    model_path = os.path.join(model_conf_path, os.listdir(model_conf_path)[0])
+    model_path = os.path.join(model_conf_path, model_timestamp)
 
     predictions_path = os.path.join(model_path, "predictions")
     attn_weights_path = os.path.join(predictions_path, "attn_weights", "postprocessed")
