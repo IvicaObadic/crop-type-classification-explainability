@@ -15,7 +15,7 @@ def get_partitioned_dataset(
         sequence_aggregator,
         classes_to_exclude,
         most_important_dates_file=None,
-        fraction_of_important_dates_to_keep=1.0,
+        num_important_dates_to_keep=1,
         with_spectral_diff_as_input=False,
         target_regions=AVAILABLE_REGIONS):
     assert len(target_regions) > 0, 'At least one region must be supplied'
@@ -37,7 +37,7 @@ def get_partitioned_dataset(
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
                                              most_important_dates_file = most_important_dates_file,
-                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
+                                             num_important_dates_to_keep=num_important_dates_to_keep,
                                              with_spectral_diff_as_input=with_spectral_diff_as_input)
         valid_dataset = BavarianCropsDataset(root=root,
                                              partition="valid",
@@ -47,7 +47,7 @@ def get_partitioned_dataset(
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
                                              most_important_dates_file=most_important_dates_file,
-                                             fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
+                                             num_important_dates_to_keep=num_important_dates_to_keep,
                                              with_spectral_diff_as_input=with_spectral_diff_as_input)
         test_dataset = BavarianCropsDataset(root=root,
                                             partition="test",
@@ -57,7 +57,7 @@ def get_partitioned_dataset(
                                             classes_to_exclude=classes_to_exclude,
                                             scheme="blocks",
                                             most_important_dates_file=most_important_dates_file,
-                                            fraction_of_important_dates_to_keep=fraction_of_important_dates_to_keep,
+                                            num_important_dates_to_keep=num_important_dates_to_keep,
                                             with_spectral_diff_as_input=with_spectral_diff_as_input)
 
         raw_sequence_lengths = np.append(raw_sequence_lengths, train_dataset.sequencelengths)

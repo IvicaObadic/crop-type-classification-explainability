@@ -28,7 +28,7 @@ def read_classification_results(classification_results_dir):
 def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
     perc_dates_results = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
-        if root_perc_result_dir.endswith("frac_of_dates_set2"):
+        if root_perc_result_dir.endswith("num_dates"):
             frac_dates = float(root_perc_result_dir.split("_")[0])
             print(frac_dates)
             root_perc_result_path = os.path.join(perc_important_dates_results_root_dir, root_perc_result_dir)

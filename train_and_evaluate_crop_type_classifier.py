@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
     parser.add_argument('--most_important_dates_file', type=str, default=None, help='file which contains the most important days in the calendar year')
-    parser.add_argument('--fraction_of_important_dates_to_keep', type=float, default=0.02, help='fraction of the most important days to use for every parcel')
+    parser.add_argument('--num_important_dates_to_keep', type=int, default=10, help='fraction of the most important days to use for every parcel')
     parser.add_argument('--with_spectral_diff_as_input', action="store_true", help='store the weights and gradients during test time')
     args, _ = parser.parse_known_args()
     return args
@@ -80,7 +80,7 @@ def train_and_evaluate_crop_classifier(args):
     class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(args.num_classes))
 
     most_important_dates_file = args.most_important_dates_file
-    fraction_of_important_dates_to_keep = args.fraction_of_important_dates_to_keep
+    num_important_dates_to_keep = args.num_important_dates_to_keep
     sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr,
                                                       args.time_points_to_sample,
                                                       most_important_dates_file is not None)
@@ -103,7 +103,7 @@ def train_and_evaluate_crop_classifier(args):
                         sequence_aggregator,
                         classes_to_exclude,
                         most_important_dates_file,
-                        fraction_of_important_dates_to_keep,
+                        num_important_dates_to_keep,
                         args.with_spectral_diff_as_input)
 
                     #all observation contain sequences of same length
@@ -126,7 +126,7 @@ def train_and_evaluate_crop_classifier(args):
 
                     with_most_important_dates = "all_dates"
                     if most_important_dates_file is not None:
-                        with_most_important_dates = "{}_frac_of_dates_set2".format(fraction_of_important_dates_to_keep)
+                        with_most_important_dates = "{}_num_dates".format(num_important_dates_to_keep)
 
                     training_directory = os.path.join(args.results_root_dir, "{}_classes".format(num_classes))
                     training_directory = append_occluded_classes_label(training_directory, classes_to_exclude)
