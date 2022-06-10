@@ -177,8 +177,8 @@ def resolve_sequence_aggregator(seq_aggr_name, time_points_to_sample=None, train
         return WeeklySequenceAggregator()
     elif seq_aggr_name == "right_padding":
         sequence_padder = SequencePadder()
-        if train_with_fraction_key_dates:
-            sequence_padder.set_num_training_times(5)
+        # if train_with_fraction_key_dates:
+        #     sequence_padder.set_num_training_times(5)
         return sequence_padder
     elif seq_aggr_name == "random_sampling":
         return SequenceSampler(time_points_to_sample=time_points_to_sample)
