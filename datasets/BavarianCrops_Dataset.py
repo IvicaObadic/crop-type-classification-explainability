@@ -227,7 +227,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.y = self.applyclassmapping(self.nutzcodes)
 
         self.sequencelengths = np.array([np.array(X).shape[0] for X in self.X])
-        assert len(self.sequencelengths) > 0
+        #assert len(self.sequencelengths) > 0
         self.max_sequence_length = self.sequencelengths.max()
         self.ndims = self.X[0].shape[1]
         self.hist,_ = np.histogram(self.y, bins=self.nclasses)
