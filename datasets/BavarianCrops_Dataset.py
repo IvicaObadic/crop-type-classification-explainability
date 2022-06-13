@@ -224,14 +224,21 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             else:
                 self.stats["not_found"].append(id_file)
 
-        self.y = self.applyclassmapping(self.nutzcodes)
-
-        self.sequencelengths = np.array([np.array(X).shape[0] for X in self.X])
-        #assert len(self.sequencelengths) > 0
-        self.max_sequence_length = self.sequencelengths.max()
-        self.ndims = self.X[0].shape[1]
-        self.hist,_ = np.histogram(self.y, bins=self.nclasses)
-        self.classweights = 1 / self.hist
+        if len(self.X) == 0:
+            self.y = None
+            self.sequencelengths = None
+            self.max_sequence_length = None
+            self.ndims = None
+            self.hist = None
+            self.classweights=None
+        else:
+            self.y = self.applyclassmapping(self.nutzcodes)
+            self.sequencelengths = np.array([np.array(X).shape[0] for X in self.X])
+            #assert len(self.sequencelengths) > 0
+            self.max_sequence_length = self.sequencelengths.max()
+            self.ndims = self.X[0].shape[1]
+            self.hist,_ = np.histogram(self.y, bins=self.nclasses)
+            self.classweights = 1 / self.hist
 
         self.cache_variables(self.y, self.sequencelengths, self.ids, self.ndims, self.X, self.classweights, self.missing_key_dates_obs)
 
