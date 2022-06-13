@@ -107,7 +107,6 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             print("no cached dataset found. iterating through csv folders in " + str(self.data_folder))
             self.cache_dataset()
 
-        self.hist, _ = np.histogram(self.y, bins=self.nclasses)
 
         print(self)
 
