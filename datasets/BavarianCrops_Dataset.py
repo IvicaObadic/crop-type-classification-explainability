@@ -111,8 +111,13 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         print(self)
 
     def __str__(self):
-        return "Dataset {}. region {}. partition {}. X:{}, y:{} with {} classes".format(
-            self.root, self.region, self.partition, str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
+        base_description = "Dataset {}. region {}. partition {}.".format(self.root, self.region, self.partition)
+        instance_statistics = "No observations for the selected dates"
+        if self.X is not None:
+            instance_statistics = "X:{}, y:{} with {} classes".format(
+            str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
+
+        return base_description + instance_statistics
 
     def read_ids_random(self):
         assert isinstance(self.seed, int)

@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument(
         '--num_heads', type=str, default="1", help='the number of heads in each layer of the model. Multiple values should be separated with ,')
     parser.add_argument('--model_dim', type=str, default="128", help='embedding dimension of the model. Multiple values should be separated with ,')
-    parser.add_argument('--save_weights_and_gradients', default=True, action="store_true", help='store the weights and gradients during test time')
+    parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
     parser.add_argument('--most_important_dates_file', type=str, default=None, help='file which contains the most important days in the calendar year')
