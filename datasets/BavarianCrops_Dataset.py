@@ -229,12 +229,12 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
                 self.stats["not_found"].append(id_file)
 
         if len(self.X) == 0:
-            self.y = None
-            self.sequencelengths = None
-            self.max_sequence_length = None
-            self.ndims = None
-            self.hist = None
-            self.classweights=None
+            self.y = -1
+            self.sequencelengths = np.array([0])
+            self.max_sequence_length = 0
+            self.ndims = -1
+            self.hist = -1
+            self.classweights=-1
         else:
             self.y = self.applyclassmapping(self.nutzcodes)
             self.sequencelengths = np.array([np.array(X).shape[0] for X in self.X])

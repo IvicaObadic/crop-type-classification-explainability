@@ -31,7 +31,7 @@ class ConcatDataset(torch.utils.data.Dataset):
     def __init__(self, datasets, max_sequence_length):
         super(ConcatDataset, self).__init__()
         assert len(datasets) > 0, 'datasets should not be an empty iterable'
-        self.datasets = [dataset for dataset in datasets if dataset.max_sequence_length is not None]
+        self.datasets = [dataset for dataset in datasets if dataset.max_sequence_length > 0]
         for dataset in self.datasets:
             dataset.update_max_sequence_length(max_sequence_length)
 
