@@ -42,7 +42,6 @@ class ConcatDataset(torch.utils.data.Dataset):
         self.ndims = datasets[0].ndims
         self.classweights = datasets[0].classweights
         self.classname = datasets[0].classname
-        self.hist = np.array([d.hist for d in self.datasets]).sum(0)
         self.partition = self.datasets[0].partition
 
         self.y = np.concatenate([d.y for d in self.datasets], axis=0)
