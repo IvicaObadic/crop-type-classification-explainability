@@ -113,7 +113,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
     def __str__(self):
         base_description = "Dataset {}. region {}. partition {}.".format(self.root, self.region, self.partition)
         instance_statistics = "No observations for the selected dates"
-        if self.X is not None:
+        if len(self.X) > 0:
             instance_statistics = "X:{}, y:{} with {} classes".format(
             str(len(self.X)) +"x"+ str(self.X[0].shape), self.y.shape, self.nclasses)
 
