@@ -103,6 +103,7 @@ class CropTypeClassifier(nn.Module):
 
 
 def init_model_with_hyper_params(
+        input_channels,
         sequence_length,
         num_classes,
         pos_enc_opt,
@@ -113,7 +114,7 @@ def init_model_with_hyper_params(
 
     d_inner = d_model * 4
     crop_type_classifier = CropTypeClassifier(
-        input_channels=13,
+        input_channels=input_channels,
         sequence_length=sequence_length,
         pos_enc_opt=pos_enc_opt,
         d_model=d_model,

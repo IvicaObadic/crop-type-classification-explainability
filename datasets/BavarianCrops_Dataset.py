@@ -316,7 +316,6 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         sample[BANDS] = sample[BANDS] * NORMALIZING_FACTOR
         final_bands_to_use = BANDS
         if self.with_spectral_diff_as_input:
-            #the row with index 0 contains nan values due to no previous rows
             sample[BANDS] = sample[BANDS].diff(axis=1)
             # the first column is NaN column because it has no previous element to calculate the difference
             sample = sample.dropna(axis=1)

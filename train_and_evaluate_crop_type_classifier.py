@@ -106,12 +106,16 @@ def train_and_evaluate_crop_classifier(args):
                         num_important_dates_to_keep,
                         args.with_spectral_diff_as_input)
 
+                    input_channels = 13
+                    if args.with_spectral_diff_as_input:
+                        input_channels = 12
                     #all observation contain sequences of same length
                     sequence_length = train_dataset[0][0].shape[0]
                     num_classes = train_dataset.nclasses
 
                     set_seed()
                     crop_type_classifier = init_model_with_hyper_params(
+                        input_channels,
                         sequence_length,
                         num_classes,
                         args.pos_enc_opt,

@@ -271,7 +271,11 @@ if __name__ == "__main__":
         args.fraction_of_important_dates_to_keep,
         args.shuffle_sequences)
 
+    input_channels = 13
+    if args.with_spectral_diff_as_input:
+        input_channels = 12
     crop_type_classifier_model = init_model_with_hyper_params(
+        input_channels,
         test_dataset[0][0].shape[0],
         test_dataset.nclasses,
         args.pos_enc_opt,
