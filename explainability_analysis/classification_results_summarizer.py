@@ -26,22 +26,22 @@ def read_classification_results(classification_results_dir):
 
 
 def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
-    perc_dates_results = []
+    accuracy_per_num_dates = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
         if root_perc_result_dir.endswith("num_dates"):
-            frac_dates = float(root_perc_result_dir.split("_")[0])
-            print(frac_dates)
+            num_dates = float(root_perc_result_dir.split("_")[0])
+            print(num_dates)
             root_perc_result_path = os.path.join(perc_important_dates_results_root_dir, root_perc_result_dir)
             for root_perc_result_dir_path in os.listdir(root_perc_result_path):
                 model_results_dir = os.path.join(root_perc_result_path, root_perc_result_dir_path)
                 classification_results = read_classification_results(model_results_dir)
                 if classification_results is not None:
-                    perc_dates_results.append((frac_dates * 100, classification_results[0], classification_results[1], "Percentage of Dates"))
+                    accuracy_per_num_dates.append((num_dates, classification_results[0], classification_results[1], "Num. dates"))
 
-    perc_dates_results = pd.DataFrame(data=perc_dates_results,
-                                      columns=["Percent of observations", "Class accuracy", "F1 Score","Model type"])
-    perc_dates_results.to_csv(os.path.join(perc_important_dates_results_root_dir, "perc_accuracy_results.csv"))
-    return perc_dates_results
+    accuracy_per_num_dates = pd.DataFrame(data=accuracy_per_num_dates,
+                                      columns=["Num. dates", "Class accuracy", "F1 Score","Model type"])
+    accuracy_per_num_dates.to_csv(os.path.join(perc_important_dates_results_root_dir, "num_dates_accuracy_results.csv"))
+    return accuracy_per_num_dates
 
 if __name__ == "__main__":
     args = parse_args()
