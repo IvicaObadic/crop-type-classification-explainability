@@ -90,7 +90,7 @@ def summarize_attention_weights_as_feature_embeddings(
     return pd.concat(feature_embeddings)
 
 
-def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, classes_to_exclude=None, with_spectral_diff_as_input=False):
+def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, classes_to_exclude=None, with_spectral_diff_as_input=False, summary_fn="mean"):
     model_classes = 12
     if classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in classes_to_exclude.split(',')]
@@ -107,24 +107,44 @@ def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, 
     total_temporal_attention_per_parcel_file = os.path.join(attn_weights_path, "parcel_temporal_attention.csv")
     if os.path.exists(total_temporal_attention_per_parcel_file):
         print("Reading the precomputed attention weights from {}".format(total_temporal_attention_per_parcel_file))
-        return pd.read_csv(total_temporal_attention_per_parcel_file, index_col=0)
+        total_temporal_attention_per_parcel = pd.read_csv(total_temporal_attention_per_parcel_file, index_col=0)
+    else:
+        predicted_vs_true_results = pd.read_csv(os.path.join(predictions_path, "predicted_vs_true.csv"), index_col=0)
+        predicted_vs_true_results.index = predicted_vs_true_results.index.map(str)
+        classmapping = pd.read_csv(os.path.join(predictions_path, "confusion_matrix.csv")).columns
+        predicted_vs_true_results["TRUE_CROP_TYPE"] = predicted_vs_true_results["LABEL"].apply(lambda x: classmapping[x])
+        predicted_vs_true_results["PREDICTED_CROP_TYPE"] = predicted_vs_true_results["PREDICTION"].apply(lambda x: classmapping[x])
 
-    predicted_vs_true_results = pd.read_csv(os.path.join(predictions_path, "predicted_vs_true.csv"), index_col=0)
-    predicted_vs_true_results.index = predicted_vs_true_results.index.map(str)
-    classmapping = pd.read_csv(os.path.join(predictions_path, "confusion_matrix.csv")).columns
-    predicted_vs_true_results["TRUE_CROP_TYPE"] = predicted_vs_true_results["LABEL"].apply(lambda x: classmapping[x])
-    predicted_vs_true_results["PREDICTED_CROP_TYPE"] = predicted_vs_true_results["PREDICTION"].apply(lambda x: classmapping[x])
+        total_temporal_attention_per_parcel = summarize_attention_weights_as_feature_embeddings(attn_weights_path,
+                                                                                                "layer_0",
+                                                                                                 summary_fn=summary_fn)
+        total_temporal_attention_per_parcel = total_temporal_attention_per_parcel.join(predicted_vs_true_results, how="inner")
+        total_temporal_attention_per_parcel["Date"] = pd.to_datetime(
+            total_temporal_attention_per_parcel["Date"].apply(lambda x: "{}-2018".format(x)), format="%d-%m-%Y")
+        total_temporal_attention_per_parcel.drop(["LABEL", "PREDICTION"], axis=1, inplace=True)
 
-    total_temporal_attention_per_parcel = summarize_attention_weights_as_feature_embeddings(attn_weights_path,
-                                                                                            "layer_0",
-                                                                                             summary_fn="sum")
-    total_temporal_attention_per_parcel = total_temporal_attention_per_parcel.join(predicted_vs_true_results, how="inner")
-    total_temporal_attention_per_parcel["Date"] = pd.to_datetime(
-        total_temporal_attention_per_parcel["Date"].apply(lambda x: "{}-2018".format(x)), format="%d-%m-%Y")
-    total_temporal_attention_per_parcel.drop(["LABEL", "PREDICTION"], axis=1, inplace=True)
+        total_temporal_attention_per_parcel.to_csv(total_temporal_attention_per_parcel_file)
 
-    total_temporal_attention_per_parcel.to_csv(total_temporal_attention_per_parcel_file)
-    return total_temporal_attention_per_parcel
+    avg_attention_per_obs_acq_date = sort_obs_acq_dates_by_attention(model_path)
+
+    return total_temporal_attention_per_parcel, avg_attention_per_obs_acq_date
+
+
+def sort_by_attention(temporal_attn_weights, attention_column="Attention"):
+
+    avg_attention_per_obs_acq_date = temporal_attn_weights.groupby("Date")[attention_column].mean()
+    avg_attention_per_obs_acq_date = avg_attention_per_obs_acq_date.sort_values(ascending=False)
+    return avg_attention_per_obs_acq_date
+
+
+def sort_obs_acq_dates_by_attention(model_root_path):
+    predictions_path = os.path.join(model_root_path, "predictions")
+    attn_weights_path = os.path.join(predictions_path, "attn_weights", "postprocessed")
+
+    temporal_attn_weights = pd.read_csv(os.path.join(attn_weights_path, "parcel_temporal_attention.csv"))
+    temporal_attn_weights["Date"] = pd.to_datetime(temporal_attn_weights["Date"])
+    return sort_by_attention(temporal_attn_weights)
+
 
 def calc_and_save_weekly_average_attn_weights(attn_weights_feature_embeddings_dict, root_dir_path=None):
     weekly_average_attn_weights_per_parcel = dict()

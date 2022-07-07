@@ -409,7 +409,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             parcel_reflectance.drop(["YEAR", "MONTH", "DATE"], axis=1, inplace=True)
             parcel_reflectance["NDVI"] = (parcel_reflectance[NEAR_INFRARED_BAND] - parcel_reflectance[VISIBLE_RED_BAND]) /\
                                          (parcel_reflectance[NEAR_INFRARED_BAND] + parcel_reflectance[VISIBLE_RED_BAND])
-            parcel_reflectance["CLASS"] = self.classname[self.y[idx]]
+            parcel_reflectance["Crop type"] = self.classname[self.y[idx]]
             parcel_reflectance["PARCEL_ID"] = parcel_id
             parcel_reflectance.set_index("PARCEL_ID", inplace=True)
 

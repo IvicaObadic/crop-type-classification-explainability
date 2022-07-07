@@ -100,6 +100,28 @@ def stacked_boxplot(input_data, title, xlabel, ylabel):
     plt.close()
 
 
+# def plot_ndvi_of_crop_vs_others(spectral_indices, target_class):
+#     fig, axs = plt.subplots(figsize=(7, 4))
+#
+#     spectral_indices_grassland = test_dataset_spectral_indices.loc[
+#         test_dataset_spectral_indices["CLASS"].isin([target_class])]
+#     spectral_indices_not_grassland = test_dataset_spectral_indices.loc[
+#         ~test_dataset_spectral_indices["CLASS"].isin([target_class])]
+#     axs = sns.lineplot(data=spectral_indices_grassland, x="Date", y="NDVI", hue="CLASS", linestyle="dashed", ci="sd",
+#                        ax=axs, palette=crop_type_color_mapping)
+#     axs = sns.lineplot(data=spectral_indices_not_grassland, x="Date", y="NDVI", linestyle="dashed", ci="sd", ax=axs,
+#                        label="Other crops")
+#     axs.set_title("NDVI index throughout the year", fontweight="bold")
+#
+#
+# def plot_ndvi_of_target_classes(spectral_indices, target_classes):
+#     fig, axs = plt.subplots(figsize=(7, 4))
+#
+#     spectral_indices_target_classes = test_dataset_spectral_indices.loc[
+#         test_dataset_spectral_indices["CLASS"].isin(target_classes)]
+#     axs = sns.lineplot(data=spectral_indices_target_classes, x="Date", y="NDVI", hue="CLASS", linestyle="dashed",
+#                        ci="sd", ax=axs, palette=crop_type_color_mapping)
+#     axs.set_title("NDVI index throughout the year", fontweight="bold")
 
 #################  UNUSED VISUALIZATION FUNCTIONS ##########################
 # def plot_attn_weights_key_queries_row_wise:
@@ -224,4 +246,39 @@ def stacked_boxplot(input_data, title, xlabel, ylabel):
 #         ax_parcel_spectral_signature.yaxis.set_visible(False)
 #
 # fig.suptitle("Clusters Difference Analysis", fontsize=16)
+# fig.tight_layout()
+# attn_weights_corn_all_models = attn_weights_corn_all_models.groupby(["Date", "Model"])["Attention"].mean().reset_index()
+# fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(7,12))
+# attn_weights_corn_no_oclcusion = attn_weights_corn_all_models.loc[attn_weights_corn_all_models["Model"].isin(["all_classes"])]
+# axs[0] = sns.lineplot(data=attn_weights_corn_no_oclcusion, x="Date", y="Attention", estimator="mean",ci="sd", ax = axs[0], color=color_mapping["corn"])
+# axs[0].set_title("Corn temporal attention - full model", fontweight="bold")
+# axs[0].legend(["Attention"], loc="upper left")
+# axs[0].set_ylabel('Attention', fontsize=10)
+# spectral_indices_corn = test_dataset_spectral_indices.loc[test_dataset_spectral_indices["CLASS"].isin(["corn"])]
+#
+# ax_ndvi_corn = axs[0].twinx()
+# ax_ndvi_corn = sns.lineplot(data=spectral_indices_corn, x="Date", y="NDVI",linestyle="dashed", ci=None, ax=ax_ndvi_corn, color="g")
+# ax_ndvi_corn.legend(["NDVI corn"],loc="upper right")
+#
+#
+# attn_weights_corn_winter_wheat_occlusion = attn_weights_corn_all_models.loc[attn_weights_corn_all_models["Model"].isin(["winter_wheat_occlusion"])]
+# axs[1] = sns.lineplot(data=attn_weights_corn_winter_wheat_occlusion, x="Date", y="Attention", estimator="mean",ci="sd", ax = axs[1], color=color_mapping["corn"] )
+# axs[1].legend(["Attention"], loc="upper left")
+# axs[1].set_ylabel('Attention', fontsize=10)
+# axs[1].set_title("Corn temporal attention - Winter wheat occlusion", fontweight="bold")
+# spectral_indices_winter_wheat = test_dataset_spectral_indices.loc[test_dataset_spectral_indices["CLASS"].isin(["winter wheat"])]
+#
+# ax_ndvi_winter_wheat = axs[1].twinx()
+# ax_ndvi_winter_wheat = sns.lineplot(data=spectral_indices_winter_wheat, x="Date", y="NDVI",linestyle="dashed", ci=None, ax=ax_ndvi_winter_wheat, color="g")
+# ax_ndvi_winter_wheat.legend(["NDVI Winter wheat"],loc="upper right")
+#
+# attn_weights_corn_summer_barley_occlusion = attn_weights_corn_all_models.loc[attn_weights_corn_all_models["Model"].isin(["summer_barley_occlusion"])]
+# axs[2] = sns.lineplot(data=attn_weights_corn_summer_barley_occlusion, x="Date", y="Attention", estimator="mean",ci="sd", ax = axs[2], color=color_mapping["corn"])
+# axs[2].legend(["Attention"], loc="upper left")
+# axs[2].set_ylabel('Attention', fontsize=10)
+# axs[2].set_title("Corn temporal attention - Summer barley occlusion", fontweight="bold")
+# spectral_indices_summer_barley = test_dataset_spectral_indices.loc[test_dataset_spectral_indices["CLASS"].isin(["summer barley"])]
+# ax_ndvi_summer_barley = axs[2].twinx()
+# ax_ndvi_summer_barley = sns.lineplot(data=spectral_indices_summer_barley, x="Date", y="NDVI",linestyle="dashed", ci=None, ax=ax_ndvi_summer_barley, color="g")
+# ax_ndvi_winter_wheat.legend(["NDVI summer barley"],loc="upper right")
 # fig.tight_layout()
