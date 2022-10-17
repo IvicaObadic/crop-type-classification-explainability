@@ -26,6 +26,29 @@ from datasets.util_functions import *
 from explainability_analysis.visualization_functions import *
 from explainability_analysis.crop_spectral_signature_analysis import *
 
+#exclude from the analysis the least frequent classes (occur under 10%) that are also highly correlated with other classes
+CLASSES_TO_EXCLUDE = ["rapeseed", "winter triticale", "summer oat", "summer wheat", "winter spelt", "winter rye", "fallow"]
+
+
+def get_attn_weights_patterns(base_model_path,
+                              date_setting,
+                              model_timestamp,
+                              classes_to_exclude=None,
+                              model_label="All crops",
+                              target_classes = ["grassland","corn", "summer barley", "winter wheat","winter barley"],
+                              with_spectral_diff_as_input=False):
+    temporal_attn_weights, avg_attention_per_obs_acq_date = get_temporal_attn_weights(base_model_path, date_setting,
+                                                                                      model_timestamp,
+                                                                                      classes_to_exclude,
+                                                                                      with_spectral_diff_as_input)
+    temporal_attn_weights["Date"] = pd.to_datetime(temporal_attn_weights["Date"])
+    temporal_attn_weights["Model Label"] = model_label
+    temporal_attn_weights.rename(columns={"PREDICTED_CROP_TYPE": "Crop type"}, inplace=True)
+    if target_classes is not None:
+        temporal_attn_weights = temporal_attn_weights.loc[temporal_attn_weights["Crop type"].isin(target_classes)]
+    temporal_attn_date_avg = temporal_attn_weights.groupby(["Date", "Crop type"]).mean().reset_index()
+
+    return temporal_attn_weights, temporal_attn_date_avg, avg_attention_per_obs_acq_date
 
 def summarize_attention_weights_as_feature_embeddings(
         attn_weights_root_dir,
@@ -90,17 +113,33 @@ def summarize_attention_weights_as_feature_embeddings(
     return pd.concat(feature_embeddings)
 
 
-def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, classes_to_exclude=None, with_spectral_diff_as_input=False, summary_fn="mean"):
+def get_model_path(classes_to_exclude, date_setting, model_timestamp, root_results_path, with_spectral_diff_as_input):
     model_classes = 12
     if classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in classes_to_exclude.split(',')]
         model_classes = model_classes - len(classes_to_exclude)
-
     model_conf_path = "{}/{}_classes/".format(root_results_path, model_classes)
     model_conf_path = append_occluded_classes_label(model_conf_path, classes_to_exclude)
     model_conf_path = append_spectral_diff_label(model_conf_path, with_spectral_diff_as_input)
     model_conf_path = os.path.join(model_conf_path, "right_padding/obs_aq_date/layers=1,heads=1,emb_dim=128/")
     model_path = os.path.join(model_conf_path, date_setting, model_timestamp)
+    return model_path
+
+
+def get_parcel_attn_weights(base_model_path, date_setting, model_timestamp, parcel_id, classes_to_exclude=None, with_spectral_diff_as_input=False):
+    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, base_model_path,
+                                with_spectral_diff_as_input)
+    attn_weights_path = os.path.join(model_path, "predictions", "attn_weights", "postprocessed")
+
+    with open(os.path.join(attn_weights_path, '{}_attn_weights_df.pickle'.format(parcel_id)), 'rb') as handle:
+        parcel_attn_weights = pickle.load(handle)["layer_0"]
+
+    return parcel_attn_weights
+
+
+def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, classes_to_exclude=None, with_spectral_diff_as_input=False, summary_fn="mean"):
+    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, root_results_path,
+                                with_spectral_diff_as_input)
 
     predictions_path = os.path.join(model_path, "predictions")
     attn_weights_path = os.path.join(predictions_path, "attn_weights", "postprocessed")

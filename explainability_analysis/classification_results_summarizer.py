@@ -24,6 +24,15 @@ def read_classification_results(classification_results_dir):
         return classification_data[2], classification_data[6]
     return None
 
+def read_confusion_matrix(model_path):
+    confusion_matrix_path = os.path.join(model_path, "predictions", "confusion_matrix.csv")
+    confusion_matrix = pd.read_csv(confusion_matrix_path)
+
+    confusion_matrix["True class"] = list(confusion_matrix.columns)
+    confusion_matrix.set_index("True class", inplace=True)
+
+    confusion_matrix_normalized = confusion_matrix.astype('float') / confusion_matrix.sum(axis=1)[:, np.newaxis]
+    return confusion_matrix_normalized
 
 def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
     accuracy_per_num_dates = []
@@ -42,6 +51,17 @@ def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir
                                       columns=["Num. dates", "Class accuracy", "F1 Score","Model type"])
     accuracy_per_num_dates.to_csv(os.path.join(perc_important_dates_results_root_dir, "num_dates_accuracy_results.csv"))
     return accuracy_per_num_dates
+
+
+# fig, axs = plt.subplots(ncols=1, figsize=(set_size(200)[0], 2.5))
+# class_frequency = pd.DataFrame(cm.sum(axis=1))
+# print(class_frequency)
+# class_frequency_plot = sns.heatmap(class_frequency, annot=True, cbar=None, cmap="Greens", fmt="d", xticklabels=False)
+# #class_frequency_plot.set_title("Class Frequency")
+# class_frequency_plot.set_xlabel("Count")
+# class_frequency_plot.set_ylabel("")
+# fig.tight_layout()
+# plt.savefig(os.path.join(figures_base_path, 'class_frequency.pdf'), dpi=400)
 
 if __name__ == "__main__":
     args = parse_args()

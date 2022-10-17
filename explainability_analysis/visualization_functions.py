@@ -1,28 +1,137 @@
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
+import rasterio
+from rasterio.plot import show
+import datetime
+from.visualization_constants import *
 
-crop_type_color_mapping = {"grassland":"g", "corn": "y", "summer barley": "r", "winter barley": "k", "winter wheat": "c", "fallow":"m"}
 show_every_nth_time_point_over100bs = 10
 show_every_nth_time_point_below100bs = 6
 
 
+def set_size(width_pt, fraction=1, subplots=(1, 1)):
+    """
+    Source: https://jwalton.info/Matplotlib-latex-PGF/
+    Set figure dimensions to sit nicely in our document.
+
+    Parameters
+    ----------
+    width_pt: float
+            Document width in points
+    fraction: float, optional
+            Fraction of the width which you wish the figure to occupy
+    subplots: array-like, optional
+            The number of rows and columns of subplots.
+    Returns
+    -------
+    fig_dim: tuple
+            Dimensions of figure in inches
+    """
+    # Width of figure (in pts)
+    fig_width_pt = width_pt * fraction
+    # Convert from pt to inches
+    inches_per_pt = 1 / 72.27
+
+    # Golden ratio to set aesthetic figure height
+    golden_ratio = (5**.5 - 1) / 2
+
+    # Figure width in inches
+    fig_width_in = fig_width_pt * inches_per_pt
+    # Figure height in inches
+    fig_height_in = fig_width_in * golden_ratio * (subplots[0] / subplots[1])
+
+    return (fig_width_in, fig_height_in)
+
 def attn_weights_heatmap(parcel_attn_weights, ax_attn_weights, cmap, parcel_class, show_every_nth_time_point, show_title=False):
-    parcel_attn_weights.index.name = 'Query Obs. Date'
+    parcel_attn_weights.index.name = 'Query'
     ax_attn_weights = sns.heatmap(
         parcel_attn_weights,
         cmap=cmap,
         ax=ax_attn_weights,
-        yticklabels=show_every_nth_time_point,
+        yticklabels=False,
         xticklabels=show_every_nth_time_point,
-        cbar=True)
+        cbar=False)
 
     if show_title:
         ax_attn_weights.set_title("Attention Weights for {} parcel".format(parcel_class))
-    ax_attn_weights.set_xlabel("Key Obs. Date")
-    ax_attn_weights.tick_params(bottom=False, top=False, left=False)
-    ax_attn_weights.set_yticklabels(ax_attn_weights.get_yticklabels())
+
+    ax_attn_weights.tick_params(axis='both')
+    ax_attn_weights.tick_params(bottom=True, top=False, left=True)
+
+    ax_attn_weights.set_ylabel(r'\textbf{Query date}')
+    ax_attn_weights.set_xlabel(r'\textbf{Key date}')
+
+    ax_attn_weights.tick_params(axis="x", rotation=45)
 
     return ax_attn_weights
+
+
+def plot_attn_weights(figures_base_path, temporal_attention_weights, plot_title=None, target_classes=None, y_column_name="Attention",
+                      y_plot_label="Average attention", plot_width=260, plot_name="attention_weights_over_time",
+                      y_err=None):
+    plot_data = temporal_attention_weights.copy(deep=True)
+    if target_classes is not None:
+        plot_data = plot_data.loc[plot_data["Crop type"].isin(target_classes)]
+
+    fig_width = set_size(plot_width)[0]
+    fig, axs = plt.subplots(figsize=(fig_width, 2.5))
+    if target_classes is not None:
+        axs = sns.lineplot(data=plot_data, x="Date", y=y_column_name, hue="Crop type", estimator="mean", ci="sd",
+                           ax=axs, palette=CROP_TYPE_COLOR_MAPPING)
+    else:
+        plot_data = plot_data.groupby("Date").agg(["mean", "std"])["Attention"]
+        plot_data.rename(columns={"mean": y_column_name}, inplace=True)
+        plot_data["upper"] = plot_data[y_column_name] + plot_data["std"]
+        plot_data["lower"] = plot_data[y_column_name] - plot_data["std"]
+        axs = sns.lineplot(data=plot_data, x="Date", y=y_column_name, ci=None, ax=axs)
+        axs.fill_between(plot_data.index, plot_data.lower, plot_data.upper, alpha=0.5)
+
+    axs.xaxis.set_major_formatter(DATE_FORMATTER)
+    axs.tick_params(axis='x', rotation=45)
+    if plot_title is not None:
+        axs.set_title(plot_title, fontweight="bold")
+    axs.set_xlabel(r'Date')
+    axs.set_ylabel(r'{}'.format(y_plot_label))
+
+    axs.legend(loc="best")
+    fig.tight_layout()
+    plt.savefig(os.path.join(figures_base_path, '{}.pdf'.format(plot_name)))
+
+def load_tiff_image(tiff_image_path):
+    return rasterio.open(tiff_image_path).read()
+
+
+def visualize_geotiff_parcels(date,
+                              results_path,
+                              target_width_pt=165,
+                              geotiff_parcels_path="C:/Users/datasets/BavarianCrops/parcel_visualization/{}/geotiff/max_attention/",
+                              show_title=False):
+
+    field_parcels_path = geotiff_parcels_path.format(date)
+
+    fig_width=set_size(target_width_pt)[0]
+    fig, axs = plt.subplots(figsize=(fig_width, 2.5), ncols=2, nrows=2)
+
+    tiff_images_paths = [field_parcel for field_parcel in os.listdir(field_parcels_path)
+                         if field_parcel.endswith(".tif")]
+    for i, tiff_image in enumerate(tiff_images_paths):
+            abs_image_path = os.path.join(field_parcels_path, tiff_image)
+            image = load_tiff_image(abs_image_path)
+            row_idx = int(i / 2)
+            col_idx = i % 2
+            ax = axs[row_idx][col_idx]
+            show(image, ax=ax)
+            crop_type = tiff_image.split('_')[0]
+            ax.set_title(crop_type, fontsize=6)
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+    date_output = datetime.datetime(2018, int(date.split('-')[0]), int(date.split('-')[1]))
+    if show_title:
+        fig.suptitle(date_output.strftime("%B %d"), fontsize=10)
+    fig.tight_layout()
+    plt.savefig(os.path.join(results_path, 'field_parcels_{}.pdf'.format(date)))
 
 
 def key_query_allignment(key_and_query_data, ax, parcel_class):
@@ -282,3 +391,27 @@ def stacked_boxplot(input_data, title, xlabel, ylabel):
 # ax_ndvi_summer_barley = sns.lineplot(data=spectral_indices_summer_barley, x="Date", y="NDVI",linestyle="dashed", ci=None, ax=ax_ndvi_summer_barley, color="g")
 # ax_ndvi_winter_wheat.legend(["NDVI summer barley"],loc="upper right")
 # fig.tight_layout()
+
+# def plot_attn_vs_ndvi(relevant_attn_weights, relevant_ndvi_data, attention_column="Attention"):
+#     unique_dates = relevant_attn_weights["Date"].unique()
+#     fig, axs = plt.subplots(nrows=2, ncols=len(unique_dates), figsize=(13, 7))
+#     for date_idx, date in enumerate(unique_dates):
+#         ndvi_for_a_date = relevant_ndvi_data.loc[relevant_ndvi_data["Date"] == date]
+#         attn_weights_for_a_date = relevant_attn_weights.loc[relevant_attn_weights["Date"] == date]
+#         ax_attention = axs[0][date_idx]
+#         ax_ndvi = axs[1][date_idx]
+#         hue_order = ndvi_for_a_date["Crop type"].unique()
+#         ax_attention = sns.barplot(data=attn_weights_for_a_date, x="Date", y=attention_column, hue="Crop type",
+#                                    hue_order=hue_order, ci="sd", palette=color_mapping, ax=ax_attention)
+#         ax_ndvi = sns.barplot(data=ndvi_for_a_date, x="Date", y="NDVI", hue="Crop type", ci="sd", hue_order=hue_order,
+#                               palette=color_mapping, ax=ax_ndvi)
+#         ax_attention.legend().set_visible(False)
+#         ax_ndvi.set_ylim([0, 1])
+#
+#         if (date_idx) > 0:
+#             ax_attention.set_ylabel("")
+#             ax_ndvi.set_ylabel("")
+#
+#         if (date_idx) != len(unique_dates) - 1:
+#             ax_ndvi.legend().set_visible(False)
+
