@@ -4,6 +4,7 @@ from sklearn.metrics import roc_auc_score, auc
 from utils.printer import Printer
 import sys
 import math
+import time
 
 
 import os
@@ -71,6 +72,7 @@ class Trainer():
         self.resumed_run = False
 
         self.epoch = 0
+        self.start_time = time.time()
 
         if os.path.exists(self.get_model_name()) and not overwrite:
             print("Resuming from snapshot {}.".format(self.get_model_name()))
@@ -129,7 +131,8 @@ class Trainer():
         self.snapshot(self.model, self.get_model_name())
         print("Saving log to {}".format(self.get_log_name()))
         self.logger.get_data().to_csv(self.get_log_name())
-
+        total_training_time = time.time() - self.start_time
+        print("Total training time: {}".format(total_training_time))
         return self.logger
 
     def validate_epoch(self, printer):
