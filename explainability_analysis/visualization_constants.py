@@ -15,6 +15,7 @@ tex_fonts = {
     "font.size": 10,
     # Make the legend/label fonts a little smaller
     "legend.fontsize": 8,
+    "axes.titlesize": 10,
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
     'text.latex.preamble': r"\usepackage{amsmath}"
@@ -38,15 +39,16 @@ poster_fonts = {
 attn_weight_matrix_viz_fonts = {
     #source: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
     # Use LaTeX to write all text
+    #source: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
+    # Use LaTeX to write all text
     "text.usetex": True,
     "font.family": "serif",
     # Use 10pt font in plots, to match 10pt font in document
-    "axes.labelsize": 10,
-    "font.size": 10,
+    "axes.labelsize": 2,
+    "font.size": 2,
     # Make the legend/label fonts a little smaller
-    "legend.fontsize": 10,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "axes.titlesize" : 10,
+    "legend.fontsize": 2,
+    "xtick.labelsize": 2,
+    "ytick.labelsize": 2,
     'text.latex.preamble': r"\usepackage{amsmath}"
 }

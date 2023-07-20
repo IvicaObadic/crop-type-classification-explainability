@@ -27,7 +27,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             scheme="random",
             validfraction=0.1,
             most_important_dates_file=None,
-            num_important_dates_to_keep=1,
+            key_dates_removal=True,
+            num_important_dates_to_consider=1,
             with_spectral_diff_as_input=False,
             cache=True,
             seed=0):
@@ -78,7 +79,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.region = region
         self.partition = partition
         self.most_important_dates = self.get_most_important_dates(most_important_dates_file)
-        self.num_important_dates_to_keep = num_important_dates_to_keep
+        self.num_important_dates_to_consider = num_important_dates_to_consider
+        self.key_dates_removal = key_dates_removal
         self.with_spectral_diff_as_input = with_spectral_diff_as_input
 
         self.data_folder = "{root}/csv/{region}".format(root=self.root, region=self.region)
@@ -94,9 +96,12 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.cache = os.path.join(self.cache, scheme, region, partition)
 
         if self.most_important_dates is not None:
+            key_dates_usage = "kept"
+            if self.key_dates_removal:
+                key_dates_usage = "removed"
             self.cache = os.path.join(self.cache,
-                                      "num_dates",
-                                      str(self.num_important_dates_to_keep))
+                                      "num_dates_{}".format(key_dates_usage),
+                                      str(self.num_important_dates_to_consider))
 
         print("read {} classes".format(self.nclasses))
 
@@ -324,10 +329,12 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         missing_key_dates_obs = 0
         if self.most_important_dates is not None:
             obs_acq_dates_as_str = sample[["TIMESTAMP"]].astype(str)
-            top_fraction_most_important_dates = self.most_important_dates.iloc[0:self.num_important_dates_to_keep]
-            indices_to_take = obs_acq_dates_as_str[["TIMESTAMP"]].isin(top_fraction_most_important_dates.index)
+            dates_to_consider = self.most_important_dates.iloc[0:self.num_important_dates_to_consider]
+            if self.key_dates_removal:
+                dates_to_consider = self.most_important_dates.iloc[self.num_important_dates_to_consider:]
+            indices_to_take = obs_acq_dates_as_str[["TIMESTAMP"]].isin(dates_to_consider.index)
             sample = sample.loc[indices_to_take["TIMESTAMP"]]
-            missing_key_dates_obs = self.num_important_dates_to_keep - len(sample.index)
+            missing_key_dates_obs = len(indices_to_take.index) - len(sample.index)
 
         if sample.empty:
             return None, None, missing_key_dates_obs
@@ -348,7 +355,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         return X, label, missing_key_dates_obs
 
     def applyclassmapping(self, nutzcodes):
-        """uses a mapping table to replace nutzcodes (e.g. 451, 411) with class ids"""
+        """uses a mapping table to replace nutzcodes (e.g. 451, 411) with claselss ids"""
         return np.array([self.mapping.loc[nutzcode]["id"] for nutzcode in nutzcodes])
 
     def update_max_sequence_length(self, max_sequence_length):

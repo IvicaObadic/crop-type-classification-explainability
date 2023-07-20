@@ -37,7 +37,7 @@ def get_partitioned_dataset(
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
                                              most_important_dates_file = most_important_dates_file,
-                                             num_important_dates_to_keep=num_important_dates_to_keep,
+                                             num_important_dates_to_consider=num_important_dates_to_keep,
                                              with_spectral_diff_as_input=with_spectral_diff_as_input)
         valid_dataset = BavarianCropsDataset(root=root,
                                              partition="valid",
@@ -47,7 +47,7 @@ def get_partitioned_dataset(
                                              classes_to_exclude=classes_to_exclude,
                                              scheme="blocks",
                                              most_important_dates_file=most_important_dates_file,
-                                             num_important_dates_to_keep=num_important_dates_to_keep,
+                                             num_important_dates_to_consider=num_important_dates_to_keep,
                                              with_spectral_diff_as_input=with_spectral_diff_as_input)
         test_dataset = BavarianCropsDataset(root=root,
                                             partition="test",
@@ -57,7 +57,7 @@ def get_partitioned_dataset(
                                             classes_to_exclude=classes_to_exclude,
                                             scheme="blocks",
                                             most_important_dates_file=most_important_dates_file,
-                                            num_important_dates_to_keep=num_important_dates_to_keep,
+                                            num_important_dates_to_consider=num_important_dates_to_keep,
                                             with_spectral_diff_as_input=with_spectral_diff_as_input)
 
         raw_sequence_lengths = np.append(raw_sequence_lengths, train_dataset.sequencelengths)

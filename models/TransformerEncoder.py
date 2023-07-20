@@ -3,7 +3,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchtext.nn.modules.multiheadattention import *
+from torchtext.nn.modules.multiheadattention import InProjContainer, MultiheadAttentionContainer, ScaledDotProduct
 
 POS_ENC_OBS_AQ_DATE = "obs_aq_date"
 POS_ENC_SEQ_ORDER = "seq_order"

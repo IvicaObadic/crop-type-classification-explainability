@@ -50,19 +50,21 @@ def attn_weights_heatmap(parcel_attn_weights, ax_attn_weights, cmap, parcel_clas
         cmap=cmap,
         ax=ax_attn_weights,
         yticklabels=False,
-        xticklabels=show_every_nth_time_point,
+        xticklabels=False,
         cbar=False)
 
     if show_title:
         ax_attn_weights.set_title("Attention Weights for {} parcel".format(parcel_class))
 
-    ax_attn_weights.tick_params(axis='both')
-    ax_attn_weights.tick_params(bottom=True, top=False, left=True)
+    ax_attn_weights.tick_params(bottom=False, top=False, left=False)
 
-    ax_attn_weights.set_ylabel(r'\textbf{Query date}')
-    ax_attn_weights.set_xlabel(r'\textbf{Key date}')
+    ax_attn_weights.set_ylabel('')
+    ax_attn_weights.set_xlabel('')
 
-    ax_attn_weights.tick_params(axis="x", rotation=45)
+    # ax_attn_weights.set_ylabel(r'\textbf{Query}')
+    # ax_attn_weights.set_xlabel(r'\textbf{Key}')
+
+    #ax_attn_weights.tick_params(axis="x", rotation=45)
 
     return ax_attn_weights
 
@@ -111,7 +113,7 @@ def visualize_geotiff_parcels(date,
     field_parcels_path = geotiff_parcels_path.format(date)
 
     fig_width=set_size(target_width_pt)[0]
-    fig, axs = plt.subplots(figsize=(fig_width, 2.5), ncols=2, nrows=2)
+    fig, axs = plt.subplots(figsize=(fig_width, 2), ncols=2, nrows=2)
 
     tiff_images_paths = [field_parcel for field_parcel in os.listdir(field_parcels_path)
                          if field_parcel.endswith(".tif")]
