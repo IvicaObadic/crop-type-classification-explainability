@@ -27,8 +27,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             scheme="random",
             validfraction=0.1,
             most_important_dates_file=None,
-            key_dates_removal=True,
-            num_important_dates_to_consider=1,
+            num_dates_to_consider=1,
+            dates_removal=True,
             with_spectral_diff_as_input=False,
             cache=True,
             seed=0):
@@ -79,8 +79,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.region = region
         self.partition = partition
         self.most_important_dates = self.get_most_important_dates(most_important_dates_file)
-        self.num_important_dates_to_consider = num_important_dates_to_consider
-        self.key_dates_removal = key_dates_removal
+        self.num_dates_to_consider = num_dates_to_consider
+        self.dates_removal = dates_removal
         self.with_spectral_diff_as_input = with_spectral_diff_as_input
 
         self.data_folder = "{root}/csv/{region}".format(root=self.root, region=self.region)
@@ -97,11 +97,10 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         if self.most_important_dates is not None:
             key_dates_usage = "kept"
-            if self.key_dates_removal:
+            if self.dates_removal:
                 key_dates_usage = "removed"
             self.cache = os.path.join(self.cache,
-                                      "num_dates_{}".format(key_dates_usage),
-                                      str(self.num_important_dates_to_consider))
+                                      "{}_dates_{}".format(num_dates_to_consider, key_dates_usage))
 
         print("read {} classes".format(self.nclasses))
 
@@ -111,7 +110,6 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         else:
             print("no cached dataset found. iterating through csv folders in " + str(self.data_folder))
             self.cache_dataset()
-
 
         print(self)
 
@@ -329,9 +327,9 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         missing_key_dates_obs = 0
         if self.most_important_dates is not None:
             obs_acq_dates_as_str = sample[["TIMESTAMP"]].astype(str)
-            dates_to_consider = self.most_important_dates.iloc[0:self.num_important_dates_to_consider]
-            if self.key_dates_removal:
-                dates_to_consider = self.most_important_dates.iloc[self.num_important_dates_to_consider:]
+            dates_to_consider = self.most_important_dates.iloc[0:self.num_dates_to_consider]
+            if self.dates_removal:
+                dates_to_consider = self.most_important_dates.iloc[self.num_dates_to_consider:]
             indices_to_take = obs_acq_dates_as_str[["TIMESTAMP"]].isin(dates_to_consider.index)
             sample = sample.loc[indices_to_take["TIMESTAMP"]]
             missing_key_dates_obs = len(indices_to_take.index) - len(sample.index)

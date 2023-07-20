@@ -46,7 +46,8 @@ def parse_args():
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
     parser.add_argument('--most_important_dates_file', type=str, default=None, help='file which contains the most important days in the calendar year')
-    parser.add_argument('--num_important_dates_to_keep', type=int, default=10, help='fraction of the most important days to use for every parcel')
+    parser.add_argument('--num_dates_to_consider', type=int, default=10, help='number of dates to consider use for every parcel')
+    parser.add_argument('--dates_removal', type=bool, default=True, help='whether to remove the considered dates or only keep them in the dataset')
     parser.add_argument('--with_spectral_diff_as_input', action="store_true", help='train the model with the spectral difference between the consecutive channels as input')
     args, _ = parser.parse_known_args()
     return args
@@ -80,7 +81,8 @@ def train_and_evaluate_crop_classifier(args):
     class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(args.num_classes))
 
     most_important_dates_file = args.most_important_dates_file
-    num_important_dates_to_keep = args.num_important_dates_to_keep
+    num_dates_to_consider = args.num_dates_to_consider
+    dates_removal = args.dates_removal
     sequence_aggregator = resolve_sequence_aggregator(args.seq_aggr,
                                                       args.time_points_to_sample,
                                                       most_important_dates_file is not None)
@@ -103,7 +105,8 @@ def train_and_evaluate_crop_classifier(args):
                         sequence_aggregator,
                         classes_to_exclude,
                         most_important_dates_file,
-                        num_important_dates_to_keep,
+                        num_dates_to_consider,
+                        dates_removal,
                         args.with_spectral_diff_as_input)
 
                     input_channels = 13
@@ -130,7 +133,10 @@ def train_and_evaluate_crop_classifier(args):
 
                     with_most_important_dates = "all_dates"
                     if most_important_dates_file is not None:
-                        with_most_important_dates = "{}_num_dates".format(num_important_dates_to_keep)
+                        key_dates_usage = "kept"
+                        if dates_removal:
+                            key_dates_usage = "removed"
+                        with_most_important_dates = "{}_dates_{}".format(num_dates_to_consider, key_dates_usage)
 
                     training_directory = os.path.join(args.results_root_dir, "{}_classes".format(num_classes))
                     training_directory = append_occluded_classes_label(training_directory, classes_to_exclude)
