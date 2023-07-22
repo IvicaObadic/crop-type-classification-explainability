@@ -58,7 +58,7 @@ class Logger():
 
         row = pd.DataFrame(stats, index=[self.idx])
 
-        self.data = self.data.append(row, sort=False)
+        self.data = pd.concat([self.data, row])
         self.idx +=1
 
     def get_data(self):
