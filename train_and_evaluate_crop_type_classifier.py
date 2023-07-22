@@ -49,6 +49,7 @@ def parse_args():
     parser.add_argument('--num_dates_to_consider', type=int, default=10, help='number of dates to consider use for every parcel')
     parser.add_argument('--dates_removal', type=bool, default=True, help='whether to remove the considered dates or only keep them in the dataset')
     parser.add_argument('--with_spectral_diff_as_input', action="store_true", help='train the model with the spectral difference between the consecutive channels as input')
+    parser.add_argument('--use_fixed_seed', type=bool, default=False, help='whether to use fixed seed to initialize the model')
     args, _ = parser.parse_known_args()
     return args
 
@@ -63,16 +64,19 @@ def set_seed(seed=0):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-def create_data_loader(dataset, batch_size=128, num_workers=4):
-    def seed_worker(worker_id):
-        worker_seed = torch.initial_seed() % 2 ** 32
-        numpy.random.seed(worker_seed)
-        random.seed(worker_seed)
+def create_data_loader(dataset, use_fixed_seed, batch_size=128, num_workers=4):
+    if use_fixed_seed:
+        def seed_worker(worker_id):
+            worker_seed = torch.initial_seed() % 2 ** 32
+            numpy.random.seed(worker_seed)
+            random.seed(worker_seed)
 
-    g = torch.Generator()
-    g.manual_seed(0)
+        g = torch.Generator()
+        g.manual_seed(0)
 
-    return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, worker_init_fn=seed_worker, generator=g)
+        return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, worker_init_fn=seed_worker, generator=g)
+    else:
+        return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
 
 def train_and_evaluate_crop_classifier(args):
 
@@ -116,7 +120,8 @@ def train_and_evaluate_crop_classifier(args):
                     sequence_length = train_dataset[0][0].shape[0]
                     num_classes = train_dataset.nclasses
 
-                    set_seed()
+                    if args.use_fixed_seed:
+                        set_seed()
                     crop_type_classifier = init_model_with_hyper_params(
                         input_channels,
                         sequence_length,
@@ -158,8 +163,8 @@ def train_and_evaluate_crop_classifier(args):
 
                     loss_fn = FocalLoss(gamma=1.0)
                     trainer = Trainer(crop_type_classifier,
-                                      create_data_loader(train_dataset),
-                                      create_data_loader(valid_dataset),
+                                      create_data_loader(train_dataset, args.use_fixed_seed),
+                                      create_data_loader(valid_dataset, args.use_fixed_seed),
                                       loss_fn=loss_fn,
                                       **config)
                     logger = trainer.fit()
