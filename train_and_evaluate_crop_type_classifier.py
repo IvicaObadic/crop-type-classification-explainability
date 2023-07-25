@@ -47,9 +47,9 @@ def parse_args():
                         help='store the weights and gradients during test time')
     parser.add_argument('--most_important_dates_file', type=str, default=None, help='file which contains the most important days in the calendar year')
     parser.add_argument('--num_dates_to_consider', type=int, default=10, help='number of dates to consider use for every parcel')
-    parser.add_argument('--dates_removal', type=bool, default=True, help='whether to remove the considered dates or only keep them in the dataset')
+    parser.add_argument('--dates_removal', action="store_true", help='whether to remove the considered dates or only keep them in the dataset')
     parser.add_argument('--with_spectral_diff_as_input', action="store_true", help='train the model with the spectral difference between the consecutive channels as input')
-    parser.add_argument('--use_fixed_seed', type=bool, default=False, help='whether to use fixed seed to initialize the model')
+    parser.add_argument('--use_fixed_seed', action="store_true", help='whether to use fixed seed to initialize the model')
     args, _ = parser.parse_known_args()
     return args
 
