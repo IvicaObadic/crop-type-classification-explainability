@@ -9,9 +9,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--perc_important_dates_results_root_dir',
+        '--results_root_dir',
         help='the root folder of the dataset',
         default="/home/results/crop-type-classification-explainability/12_classes/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/")
+    parser.add_argument(
+        '--suffix',
+        help='the suffix of the results files',
+        default="dates_removed")
 
     args, _ = parser.parse_known_args()
     return args
@@ -34,10 +38,11 @@ def read_confusion_matrix(model_path):
     confusion_matrix_normalized = confusion_matrix.astype('float') / confusion_matrix.sum(axis=1)[:, np.newaxis]
     return confusion_matrix_normalized
 
-def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir):
+
+def collect_accuracy_results(perc_important_dates_results_root_dir, suffix):
     accuracy_per_num_dates = []
     for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
-        if root_perc_result_dir.endswith("num_dates"):
+        if root_perc_result_dir.endswith(suffix):
             num_dates = float(root_perc_result_dir.split("_")[0])
             print(num_dates)
             root_perc_result_path = os.path.join(perc_important_dates_results_root_dir, root_perc_result_dir)
@@ -45,11 +50,12 @@ def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir
                 model_results_dir = os.path.join(root_perc_result_path, root_perc_result_dir_path)
                 classification_results = read_classification_results(model_results_dir)
                 if classification_results is not None:
-                    accuracy_per_num_dates.append((num_dates, classification_results[0], classification_results[1], "Num. dates"))
+                    accuracy_per_num_dates.append((num_dates, classification_results[0], classification_results[1]))
 
     accuracy_per_num_dates = pd.DataFrame(data=accuracy_per_num_dates,
-                                      columns=["Num. dates", "Class accuracy", "F1 Score","Model type"])
-    accuracy_per_num_dates.to_csv(os.path.join(perc_important_dates_results_root_dir, "num_dates_accuracy_results.csv"))
+                                      columns=["Num. dates", "Class accuracy", "F1 Score"])
+    accuracy_per_num_dates.to_csv(os.path.join(perc_important_dates_results_root_dir,
+                                               "{}_accuracy_results.csv".format(suffix)))
     return accuracy_per_num_dates
 
 
@@ -65,4 +71,4 @@ def collect_frac_of_dates_accuracy_results(perc_important_dates_results_root_dir
 
 if __name__ == "__main__":
     args = parse_args()
-    collect_frac_of_dates_accuracy_results(args.perc_important_dates_results_root_dir)
+    collect_accuracy_results(args.perc_important_dates_results_root_dir, args.suffix)
