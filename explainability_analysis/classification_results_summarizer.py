@@ -39,13 +39,13 @@ def read_confusion_matrix(model_path):
     return confusion_matrix_normalized
 
 
-def collect_accuracy_results(perc_important_dates_results_root_dir, suffix):
+def collect_accuracy_results(results_root_dir, suffix):
     accuracy_per_num_dates = []
-    for root_perc_result_dir in os.listdir(perc_important_dates_results_root_dir):
+    for root_perc_result_dir in os.listdir(results_root_dir):
         if root_perc_result_dir.endswith(suffix):
             num_dates = float(root_perc_result_dir.split("_")[0])
             print(num_dates)
-            root_perc_result_path = os.path.join(perc_important_dates_results_root_dir, root_perc_result_dir)
+            root_perc_result_path = os.path.join(results_root_dir, root_perc_result_dir)
             for root_perc_result_dir_path in os.listdir(root_perc_result_path):
                 model_results_dir = os.path.join(root_perc_result_path, root_perc_result_dir_path)
                 classification_results = read_classification_results(model_results_dir)
@@ -54,7 +54,7 @@ def collect_accuracy_results(perc_important_dates_results_root_dir, suffix):
 
     accuracy_per_num_dates = pd.DataFrame(data=accuracy_per_num_dates,
                                       columns=["Num. dates", "Class accuracy", "F1 Score"])
-    accuracy_per_num_dates.to_csv(os.path.join(perc_important_dates_results_root_dir,
+    accuracy_per_num_dates.to_csv(os.path.join(results_root_dir,
                                                "{}_accuracy_results.csv".format(suffix)))
     return accuracy_per_num_dates
 
@@ -71,4 +71,4 @@ def collect_accuracy_results(perc_important_dates_results_root_dir, suffix):
 
 if __name__ == "__main__":
     args = parse_args()
-    collect_accuracy_results(args.perc_important_dates_results_root_dir, args.suffix)
+    collect_accuracy_results(args.results_root_dir, args.suffix)
