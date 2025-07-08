@@ -1,5 +1,5 @@
 import torch
-from utils.classmetric import ClassMetric
+from utils.classmetric import ClassMetric, NDVIMetric
 from sklearn.metrics import roc_auc_score, auc
 from utils.printer import Printer
 import sys
@@ -33,6 +33,7 @@ class Trainer():
                  show_n_samples=1,
                  overwrite=True,
                  logger=None,
+                 class_names=[],
                  **kwargs):
 
         self.epochs = epochs
@@ -40,6 +41,7 @@ class Trainer():
         self.traindataloader = traindataloader
         self.validdataloader = validdataloader
         self.nclasses=traindataloader.dataset.nclasses
+        # self.nclasses=len(class_names)
         self.store = store
         self.test_every_n_epochs = test_every_n_epochs
         self.logger = logger
@@ -52,6 +54,7 @@ class Trainer():
         self.not_improved_epochs = 0
         self.best_loss = None
         self.loss_fn = loss_fn
+        self.class_names = class_names
 
         if optimizer is None:
             self.optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -68,7 +71,7 @@ class Trainer():
         else:
             self.visdom = None
 
-        # only save checkpoint if not previously resumed from it
+        # only checkpoint if not previously resumed from it
         self.resumed_run = False
 
         self.epoch = 0
@@ -208,25 +211,45 @@ class Trainer():
     def get_log_name(self):
         return os.path.join(self.store, "log.csv")
 
+    def create_non_padding_mask(self, x, positions):
+        batch_size = x.shape[0]
+        total_sequence_length = x.shape[1]
+
+        non_padding_mask = torch.ones((batch_size, total_sequence_length), dtype=torch.float)
+        for batch_elem_idx in range(batch_size):
+            padded_indices_for_sample = positions[batch_elem_idx] == -1
+            non_padding_mask[batch_elem_idx, padded_indices_for_sample] = 0
+
+        non_padding_mask = torch.unsqueeze(non_padding_mask, -1)
+        if torch.cuda.is_available():
+            non_padding_mask = non_padding_mask.cuda()
+        return non_padding_mask
+
     def train_epoch(self, epoch):
         # sets the model to train mode: dropout is applied
         self.model.train()
 
         # stores the predictions
         training_metrics = ClassMetric()
+        ndvi_metrics = NDVIMetric()
 
         for iteration, data in enumerate(self.traindataloader):
             self.optimizer.zero_grad()
 
-            inputs, positions, targets, ids = data
+            inputs, positions, targets, ndvi_targets, ids = data
+            
+            non_padding_mask = self.create_non_padding_mask(inputs, positions)
+
             if torch.cuda.is_available():
                 inputs = inputs.cuda()
                 positions = positions.cuda()
                 targets = targets.cuda()
+                ndvi_targets = ndvi_targets.cuda()
 
-            logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions)
+            logprobabilities, attn_weights_by_layer, ndvi_pred = self.model.forward(inputs, positions, non_padding_mask)
 
-            loss = self.loss_fn(logprobabilities, targets[:, 0])
+            loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets)
+            # loss = self.loss_fn(logprobabilities, targets[:, 0])
 
             loss.backward()
             if isinstance(self.optimizer,ScheduledOptim):
@@ -241,8 +264,9 @@ class Trainer():
                 loss.detach().cpu().item(),
                 targets.mode(1)[0].detach().cpu(),
                 predictions.detach().cpu())
+            ndvi_metrics.add_batch_stats(ids, targets.mode(1)[0].detach().cpu(), ndvi_targets.detach().cpu(), ndvi_pred.detach().cpu())
 
-        return training_metrics.calculate_classification_metrics()
+        return dict(tuple(training_metrics.calculate_classification_metrics().items()) + tuple(ndvi_metrics.calculate_ndvi_metrics(self.class_names).items()))  
 
     def test_epoch(self, dataloader):
         # sets the model to train mode: no dropout is applied
@@ -250,28 +274,34 @@ class Trainer():
 
         # stores the predictions
         test_metrics = ClassMetric()
+        ndvi_metrics = NDVIMetric()
 
         with torch.no_grad():
             for iteration, data in enumerate(dataloader):
 
-                inputs, positions, targets, ids = data
+                inputs, positions, targets, ndvi_targets, ids = data
+                non_padding_mask = self.create_non_padding_mask(inputs, positions)
 
                 if torch.cuda.is_available():
                     inputs = inputs.cuda()
                     positions = positions.cuda()
                     targets = targets.cuda()
+                    ndvi_targets = ndvi_targets.cuda()
 
-                logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions)
-
-                loss = self.loss_fn(logprobabilities, targets[:, 0])
+                logprobabilities, attn_weights_by_layer, ndvi_pred = self.model.forward(inputs, positions, non_padding_mask)
+                loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets)
+                # loss = self.loss_fn(logprobabilities, targets[:, 0])
 
                 prediction = self.model.predict(logprobabilities)
 
                 ## enter numpy world
                 predictions = prediction.detach().cpu()
                 labels = targets.mode(1)[0].detach().cpu()
+                # print(predictions, labels)
+                # print(labels)
 
                 test_metrics.add_batch_stats(ids, loss.detach().cpu(), labels, predictions)
+                ndvi_metrics.add_batch_stats(ids, labels, ndvi_targets.detach().cpu(), ndvi_pred.detach().cpu())
 
-        return test_metrics.calculate_classification_metrics()
+        return dict(tuple(test_metrics.calculate_classification_metrics().items()) + tuple(ndvi_metrics.calculate_ndvi_metrics(self.class_names).items())) 
 

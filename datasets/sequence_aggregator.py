@@ -5,7 +5,13 @@ import os
 import time
 
 from datasets.constants import *
+# from datasets.TimeSen2Crop_constants import *
 from datasets.util_functions import add_timestamp_column_from_date_columns
+
+
+# from constants import *
+# # from datasets.TimeSen2Crop_constants import *
+# from util_functions import add_timestamp_column_from_date_columns
 
 class SequenceAggregator(ABC):
 
@@ -34,11 +40,12 @@ class SequenceAggregator(ABC):
     def get_label(self):
         pass
 
-    def extract_num_days_since_beggining_of_year(self, dates):
+    def extract_num_days_since_beggining_of_year(self, dates, reference_date):
+
         dates_df = pd.DataFrame(dates, columns=DATE_COLUMN_NAMES)
         dates_with_timestamp_df = add_timestamp_column_from_date_columns(dates_df)
         dates_with_timestamp_df["DAYS_SINCE_BEGINNING"] = \
-            (dates_with_timestamp_df['TIMESTAMP'] - STARTING_ACQUISITION_DATE)
+            (dates_with_timestamp_df['TIMESTAMP'] - reference_date)
         dates_with_timestamp_df["DAYS_SINCE_BEGINNING"] = dates_with_timestamp_df["DAYS_SINCE_BEGINNING"].\
             apply(lambda x:x.days)
 
@@ -83,7 +90,7 @@ class SequenceSampler(SequenceAggregator):
         X = X[idxs]
 
         #the first three columns contain info about the the date of the observation
-        positions = self.extract_num_days_since_beggining_of_year(X[:, 0:3])
+        positions = self.extract_num_days_since_beggining_of_year(X[:, 0:3], reference_date)
 
         return X[:, 3:], positions
 
@@ -122,8 +129,13 @@ class SequencePadder(SequenceAggregator):
         """
         assert dataset.max_sequence_length is not None, 'The seed must be set for random sampling'
 
+        if dataset.nclasses == 9 and dataset.partition == 'test': # DENETHOR testing dataset
+            reference_date = STARTING_TEST_DATE
+        else:
+            reference_date = STARTING_ACQUISITION_DATE
+
         #first three columns contain info about the the date of the observation
-        positions = self.extract_num_days_since_beggining_of_year(X[:, :3])
+        positions = self.extract_num_days_since_beggining_of_year(X[:, :3], reference_date)
         raw_sequence_length = X.shape[0]
         npad = dataset.max_sequence_length - raw_sequence_length
         positions = np.append(positions, np.array([-1]*npad))
@@ -149,6 +161,11 @@ class WeeklySequenceAggregator(SequenceAggregator):
         super(SequenceAggregator, self).__init__()
 
     def aggregate_sequence(self, parcel_id, X, dataset):
+
+        if dataset.nclasses == 9:
+            BANDS = DENETHOR_BANDS
+        else:
+            BANDS = BAVCROPS_BANDS
 
         X_df = pd.DataFrame(X, columns=DATE_COLUMN_NAMES + BANDS)
         X_df = add_timestamp_column_from_date_columns(X_df)

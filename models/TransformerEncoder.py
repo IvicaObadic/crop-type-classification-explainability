@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchtext.nn.modules.multiheadattention import InProjContainer, MultiheadAttentionContainer, ScaledDotProduct
+# from LTAE import MultiHeadAttention
 
 POS_ENC_OBS_AQ_DATE = "obs_aq_date"
 POS_ENC_SEQ_ORDER = "seq_order"
@@ -18,23 +19,23 @@ class EncoderLayer(nn.Module):
         self.inp_projection_layer = InProjContainer(
             nn.Linear(emb_dim, emb_dim),
             nn.Linear(emb_dim, emb_dim),
-            nn.Linear(emb_dim, emb_dim))
+            nn.Linear(emb_dim, emb_dim, bias=False))     # original code: bias always false here
 
         self.attention_layer = MultiheadAttentionContainer(
-            num_heads,
-            self.inp_projection_layer,
-            ScaledDotProduct(),
-            nn.Linear(emb_dim, emb_dim),
-            batch_first=True)
+                num_heads,
+                self.inp_projection_layer,
+                ScaledDotProduct(),
+                nn.Linear(emb_dim, emb_dim, bias=False),     # original code: bias always false here
+                batch_first=True)
 
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(emb_dim)
 
-        self.pos_ffn = PositionwiseFeedForward(emb_dim, d_inner, dropout=dropout)
+        self.pos_ffn = PositionwiseFeedForward(emb_dim, d_inner, dropout=dropout) # original code: bias always false here
 
     def forward(self, x, attn_mask, non_padding_mask):
-        attn_output, attn_weight = self.attention_layer(x, x, x, attn_mask=attn_mask)
 
+        attn_output, attn_weight = self.attention_layer(x, x, x, attn_mask=attn_mask)
         output = self.dropout(attn_output)
         output = self.layer_norm(output + x)
         output *= non_padding_mask
@@ -159,4 +160,30 @@ class PositionwiseFeedForward(nn.Module):
         output = self.dropout(output)
         output = self.layer_norm(output + residual)
         output *= non_padding_mask
+        return output
+
+
+class NdviDecoder(nn.Module):
+
+    def __init__(self, d_in, d_hid, d_out=1, dropout=0.1, use_bias=True):
+        # implement timepoint variable T -> H
+        super(NdviDecoder, self).__init__()
+        self.seq_dim = True if d_out == 1 else False
+
+        self.fc1 = nn.Linear(d_in, d_hid, bias=use_bias)
+        self.fc2 = nn.Linear(d_hid, d_out, bias=use_bias)
+        # self.fc3 = nn.Linear(d_hid//2, 1)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, non_padding_mask):
+
+        output = F.relu(self.fc1(x))
+        output = self.dropout(output)
+        output = self.fc2(output)
+
+        if self.seq_dim == False: output = output.transpose(1, 2)
+
+        output *= non_padding_mask 
+        output = output.squeeze(-1)
+
         return output
