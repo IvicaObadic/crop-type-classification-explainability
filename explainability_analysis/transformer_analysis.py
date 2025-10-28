@@ -41,6 +41,7 @@ def get_attn_weights_patterns(base_model_path,
                               model_label="All crops",
                               target_classes = ["grassland","corn", "summer barley", "winter wheat","winter barley"],
                               with_spectral_diff_as_input=False,
+                              concatenate_heads=False,
                               dataset='BavarianCrops'):
     temporal_attn_weights, avg_attention_per_obs_acq_date = get_temporal_attn_weights(base_model_path, date_setting,
                                                                                       model_timestamp,
@@ -50,7 +51,8 @@ def get_attn_weights_patterns(base_model_path,
                                                                                       loss_weight,
                                                                                       classes_to_exclude,
                                                                                       with_spectral_diff_as_input,
-                                                                                      dataset)
+                                                                                      dataset,
+                                                                                      concatenate_heads)
     temporal_attn_weights["Date"] = pd.to_datetime(temporal_attn_weights["Date"])
     temporal_attn_weights["Model Label"] = model_label
     temporal_attn_weights.rename(columns={"PREDICTED_CROP_TYPE": "Crop type"}, inplace=True)
@@ -200,9 +202,10 @@ def summarize_light_attention_weights_as_feature_embeddings(
     return pd.concat(feature_embeddings)
 
 
-def get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path, with_spectral_diff_as_input, dataset):
+def get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path, with_spectral_diff_as_input, dataset, concatenate_heads):
     model_classes = 9 if dataset == 'DENETHOR' else 12
     encoder_str = encoder.split('_')[0]
+    concat = 'True' if concatenate_heads else 'False'
     if classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in classes_to_exclude.split(',')]
         model_classes = model_classes - len(classes_to_exclude)
@@ -210,7 +213,7 @@ def get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, n
     model_conf_path = append_occluded_classes_label(model_conf_path, classes_to_exclude)
     model_conf_path = append_spectral_diff_label(model_conf_path, with_spectral_diff_as_input) 
 
-    model_conf_path = os.path.join(model_conf_path, f"{encoder_str}/right_padding/obs_aq_date/concatenate_heads=False/layers=1,heads={num_heads},emb_dim={emb_dim},scale_dim={emb_dim // num_heads}/WCE,gamma=0.0/focal_loss_ratio={str(int(loss_weight*100))}")
+    model_conf_path = os.path.join(model_conf_path, f"{encoder_str}/right_padding/obs_aq_date/concatenate_heads={concat}/layers=1,heads={num_heads},emb_dim={emb_dim},scale_dim={emb_dim // num_heads}/WCE,gamma=0.0/focal_loss_ratio={str(int(loss_weight*100))}")
     # model_conf_path = os.path.join(model_conf_path, f"{encoder_str}/right_padding/obs_aq_date/layers=1,heads={num_heads},emb_dim=128/focal_loss_ratio={str(int(loss_weight*100))}")
     # model_conf_path = os.path.join(model_conf_path, f"right_padding/obs_aq_date/layers=1,heads={num_heads},emb_dim=128/{loss_param}focal_loss_ratio={str(int(loss_weight*100))}")
     model_path = os.path.join(model_conf_path, date_setting, model_timestamp)
@@ -228,9 +231,9 @@ def get_parcel_attn_weights(base_model_path, date_setting, model_timestamp, parc
     return parcel_attn_weights
 
 
-def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops', summary_fn="mean"):
+def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops', concatenate_heads=False, summary_fn="mean"):
     model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path,
-                                with_spectral_diff_as_input, dataset)
+                                with_spectral_diff_as_input, dataset, concatenate_heads)
 
     predictions_path = os.path.join(model_path, "predictions")
     attn_weights_path = os.path.join(predictions_path, "attn_weights", "postprocessed")
@@ -460,7 +463,7 @@ def calculate_weights_gradients_correlations(predictions_path, predictions):
 
 def get_out_weigths_per_attention(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops'):
     model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path,
-                                with_spectral_diff_as_input, dataset)
+                                with_spectral_diff_as_input, dataset, concatenate_heads=False)
     best_model_path = os.path.join(model_path, "best_model.pth")
 
     model_classes = 9 if dataset == 'DENETHOR' else 12    

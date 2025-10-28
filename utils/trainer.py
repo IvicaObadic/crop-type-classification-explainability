@@ -55,6 +55,7 @@ class Trainer():
         self.best_loss = None
         self.loss_fn = loss_fn
         self.class_names = class_names
+        self.lambda_ = 2e-6
 
         if optimizer is None:
             self.optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -248,7 +249,9 @@ class Trainer():
 
             logprobabilities, attn_weights_by_layer, ndvi_pred = self.model.forward(inputs, positions, non_padding_mask)
 
-            loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets)
+            attn_weights = attn_weights_by_layer["layer_0"].permute(1, 2, 0)
+            l1_norm = sum(p.abs().sum() for p in self.model.parameters())
+            loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights) + self.lambda_*l1_norm
             # loss = self.loss_fn(logprobabilities, targets[:, 0])
 
             loss.backward()
@@ -289,8 +292,9 @@ class Trainer():
                     ndvi_targets = ndvi_targets.cuda()
 
                 logprobabilities, attn_weights_by_layer, ndvi_pred = self.model.forward(inputs, positions, non_padding_mask)
-                loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets)
-                # loss = self.loss_fn(logprobabilities, targets[:, 0])
+                attn_weights = attn_weights_by_layer["layer_0"].permute(1, 2, 0)
+                l1_norm = sum(p.abs().sum() for p in self.model.parameters())
+                loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights) + self.lambda_*l1_norm
 
                 prediction = self.model.predict(logprobabilities)
 

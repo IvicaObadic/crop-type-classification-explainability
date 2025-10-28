@@ -33,9 +33,11 @@ def parse_args():
     parser.add_argument(
         '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
-        '--focal_loss_weights', type=str, default="1.0", help='Weighting choice alpha in [0,1] for the loss function: total_loss = alpha*focal_loss + (1-alpha)*rsme_loss. Multiple values should be separated with ,')
+        '--loss_fn_weights', type=str, default="1.0", help='Weighting choice alpha in [0,1] for the loss function: total_loss = alpha*focal_loss + (1-alpha)*rsme_loss. Multiple values should be separated with ,')
     parser.add_argument(
         '--loss_choice', type=str, default="WCE", help='Choice of loss-function', choices=['WCE', 'FL'])
+    parser.add_argument(
+        '--fl_gamma', type=int, default=0, help='FL - gamma parameter', choices=[0, 1, 2, 5])
     parser.add_argument(
         '--results_root_dir', help='the directory where the results are stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/paper/")
     parser.add_argument(
@@ -76,7 +78,7 @@ def set_seed(seed=0):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-def create_data_loader(dataset, use_fixed_seed, batch_size=32, num_workers=4):
+def create_data_loader(dataset, use_fixed_seed, batch_size=4, num_workers=4):
     if use_fixed_seed:
         def seed_worker(worker_id):
             worker_seed = torch.initial_seed() % 2 ** 32
@@ -105,7 +107,8 @@ def train_and_evaluate_crop_classifier(args):
     num_layers_opts = [int(layer) for layer in args.num_layers.split(',')]
     num_heads_opts = [int(head) for head in args.num_heads.split(',')]
     model_dims_opts = [int(model_dim) for model_dim in args.model_dim.split(',')]
-    focal_loss_weights = [float(weight) for weight in args.focal_loss_weights.split(',')]
+    loss_fn_weights = [float(weight) for weight in args.loss_fn_weights.split(',')]
+    gamma = int(args.fl_gamma)
     if args.classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in args.classes_to_exclude.split(',')]
     else:
@@ -115,7 +118,7 @@ def train_and_evaluate_crop_classifier(args):
         for num_heads in num_heads_opts:
             for model_dim in model_dims_opts:
                 for training_time in range(sequence_aggregator.get_num_training_times()):
-                    for focal_loss_weight in focal_loss_weights:
+                    for loss_fn_weight in loss_fn_weights:
                         
                         # Load requested dataset
                         if args.dataset == 'BavarianCrops':
@@ -182,8 +185,8 @@ def train_and_evaluate_crop_classifier(args):
 
                         optimizer = ScheduledOptim(torch.optim.Adam(
                                 filter(lambda x: x.requires_grad, crop_type_classifier.parameters()),
-                                lr=1e-3,                            # TODO eventually change lr here
-                                betas=(0.9, 0.98), eps=1e-09, weight_decay=0.1), # weight_decay=0.000413, 0.05
+                                lr=1e-3,                           
+                                betas=(0.9, 0.98), eps=1e-09, weight_decay=0), # weight_decay=0.000413, 0.05
                             crop_type_classifier.d_model, 4000)
 
                         with_most_important_dates = "all_dates"
@@ -197,10 +200,9 @@ def train_and_evaluate_crop_classifier(args):
                         training_directory = append_occluded_classes_label(training_directory, classes_to_exclude)
                         training_directory = append_spectral_diff_label(training_directory, args.with_spectral_diff_as_input)
 
-                        print(f'\nStarting training for FL-ratio = {focal_loss_weight}')
+                        print(f'\nStarting training for FL-ratio = {loss_fn_weight}')
 
                         encoder_dir = 'ltae' if args.use_lightweight else 'tae'
-                        gamma = 0.0
 
                         training_directory = os.path.join(
                             training_directory,
@@ -208,7 +210,7 @@ def train_and_evaluate_crop_classifier(args):
                             sequence_aggregator.get_label(),
                             crop_type_classifier.get_label(),
                             f'{args.loss_choice},gamma={gamma}',
-                            f'focal_loss_ratio={int(focal_loss_weight*100)}',
+                            f'focal_loss_ratio={int(loss_fn_weight*100)}',
                             with_most_important_dates,
                             str(int(time.time())))
 
@@ -218,13 +220,13 @@ def train_and_evaluate_crop_classifier(args):
                         config = dict(
                             epochs=100,
                             store=training_directory,
-                            loss_fn_weighting=focal_loss_weight,
+                            loss_fn_weighting=loss_fn_weight,
                             test_every_n_epochs=5,
                             logger=logger,
                             optimizer=optimizer)
 
                         # total_loss_fn = FocalLoss(gamma=1.0)
-                        total_loss_fn = CombinedLoss(fn=args.loss_choice, class_weights=class_weights,  gamma=gamma, weight_focal=focal_loss_weight)
+                        total_loss_fn = CombinedLoss(fn=args.loss_choice, class_weights=class_weights,  gamma=gamma, weight_focal=loss_fn_weight)
                         trainer = Trainer(crop_type_classifier,
                                         create_data_loader(train_dataset, args.use_fixed_seed),
                                         create_data_loader(valid_dataset, args.use_fixed_seed),

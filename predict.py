@@ -22,16 +22,16 @@ def parse_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--dataset', help='the chosen dataset', default="DENETHOR", choices=["BavarianCrops", "DENETHOR", "TimeSen2Crop"])
+        '--dataset', help='the chosen dataset', default="BavarianCrops", choices=["BavarianCrops", "DENETHOR", "TimeSen2Crop"])
     parser.add_argument(
         '--dataset_folder', help='the root folder of the dataset', default="/home/luca/luca_docker/datasets/")
     parser.add_argument(
         '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
     parser.add_argument(
-        '--num_classes', type=int, default=9, help='the classmaping is selected based on the number of classes')
+        '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
         # '--model_dir', help='the directory where the trained model is stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/paper/9_classes/ltae/right_padding/obs_aq_date/layers=1,heads=16,emb_dim=128/focal_loss_ratio=100/all_dates/1746306746") #1746219370
-        '--model_dir', help='the directory where the trained model is stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/paper/9_classes/ltae/right_padding/obs_aq_date/concatenate_heads=False/layers=1,heads=32,emb_dim=1024,scale_dim=32/WCE,gamma=0.0/focal_loss_ratio=100/all_dates/1748852964") #1746219370
+        '--model_dir', help='the directory where the trained model is stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/paper/12_classes/ltae/right_padding/obs_aq_date/concatenate_heads=False/layers=1,heads=64,emb_dim=512,scale_dim=8/WCE,gamma=0/focal_loss_ratio=100/all_dates/1761583314") #1746219370
     parser.add_argument(
         '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
@@ -41,13 +41,18 @@ def parse_args():
         '--time_points_to_sample', type=int, default=70,
         help='number of points to sample for the random and fixed sampling procedures')
     parser.add_argument(
-        '--focal_loss_weights', type=str, default="1.0", help='Weighting choice alpha in [0,1] for the loss function: total_loss = alpha*focal_loss + (1-alpha)*rsme_loss. Multiple values should be separated with ,')
+        '--loss_fn_weights', type=str, default="1.0", help='Weighting choice alpha in [0,1] for the loss function: total_loss = alpha*focal_loss + (1-alpha)*rsme_loss. Multiple values should be separated with ,')
+    parser.add_argument(
+        '--loss_choice', type=str, default="WCE", help='Choice of loss-function', choices=['WCE', 'FL'])
+    parser.add_argument(
+        '--fl_gamma', type=int, default=0, help='FL - gamma parameter', choices=[0, 1, 2, 5])
     parser.add_argument(
         '--num_layers', type=int, default=1, help='the number of layers for the model')
     parser.add_argument(
-        '--num_heads', type=int, default=32, help='the number of heads in each layer of the model')
-    parser.add_argument('--model_dim', type=int, default=1024, help='embedding dimension of the model')
+        '--num_heads', type=int, default=64, help='the number of heads in each layer of the model')
+    parser.add_argument('--model_dim', type=int, default=512, help='embedding dimension of the model')
     parser.add_argument('--use_lightweight', action="store_false", help='Choose encoder type: Transformer Encoder (default) or Lightweight Attention Encoder Transformer')
+    parser.add_argument('--concatenate_heads', action="store_true", help='Choose LTAE type: new implementation (default) or original')
     parser.add_argument('--save_weights_and_gradients', action="store_false",
                         help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_false",
@@ -283,7 +288,8 @@ def predict(
             with open(os.path.join(attn_weights_gradients_dir, "{}_attn_weights_gradient.pickle".format(parcel_id.item())), "wb") as handle:
                 pickle.dump(attn_weights_gradient, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        loss = loss_fn(log_probabilities, y[:, 0], ndvi_pred, y_ndvi).item()
+        loss_attn_weights = attn_weights_by_layer['layer_0'].permute(1, 2, 0)
+        loss = loss_fn(log_probabilities, y[:, 0], ndvi_pred, y_ndvi, loss_attn_weights).item()
         label = y.mode(1)[0].detach().cpu()
         prediction = crop_type_classifier_model.predict(log_probabilities).detach().cpu()
 
@@ -313,7 +319,7 @@ if __name__ == "__main__":
         classes_to_exclude = None
 
     if args.dataset == 'BavarianCrops':
-        _, _, test_dataset = get_partitioned_dataset_BavarianCrops(
+        train_dataset, _, test_dataset = get_partitioned_dataset_BavarianCrops(
         dataset_folder,
         class_mapping,
         sequence_aggregator,
@@ -335,7 +341,7 @@ if __name__ == "__main__":
         input_channels = 12
         test_year = "2019"
     else:
-        _, _, test_dataset = get_partitioned_dataset_TimeSen2Crop(
+        train_dataset, _, test_dataset = get_partitioned_dataset_TimeSen2Crop(
         dataset_folder,
         class_mapping,
         sequence_aggregator,
@@ -345,6 +351,11 @@ if __name__ == "__main__":
         args.shuffle_sequences)
         input_channels = 9
         test_year = "2018"
+
+    class_weights = torch.from_numpy(train_dataset.classweights).float() #weights from trained or test dataset?
+    if torch.cuda.is_available():
+        class_weights = class_weights.cuda()                            
+                        
     
     # if args.with_spectral_diff_as_input:
     #     input_channels = 12
@@ -357,14 +368,14 @@ if __name__ == "__main__":
         args.num_layers,
         args.num_heads,
         use_lightweight=args.use_lightweight,
-        concatenate_heads=False,
+        concatenate_heads=args.concatenate_heads,
         use_bias=True)
 
     predict(
-        train_dataset,
+        test_dataset,
         crop_type_classifier_model,
         args.model_dir,
-        loss_fn=CombinedLoss(gamma=1.0, weight_focal=float(args.focal_loss_weights)),
+        loss_fn=CombinedLoss(fn=args.loss_choice, class_weights=class_weights, gamma=float(args.fl_gamma), weight_focal=0.8),
         use_lightweight=args.use_lightweight,
         save_weights_and_gradients=args.save_weights_and_gradients,
         save_key_queries_embeddings=args.save_key_queries_embeddings,

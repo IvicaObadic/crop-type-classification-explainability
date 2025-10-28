@@ -49,29 +49,55 @@ class WeightedMSE(nn.Module):
         return torch.mean(wse_tot)
 
 
+class CosineLoss(nn.Module):
+    def __init__(self, eps=1e-8):
+        super(CosineLoss, self).__init__()
+        self.eps = eps
+
+    def forward(self, h_emb):  
+        # taken from https://github.com/VITA-Group/Diverse-ViT/blob/main/reg.py        
+        # h_emb (B, T, heads)
+        # normalize
+        target_h_emb = h_emb
+        hshape = target_h_emb.shape 
+        target_h_emb = target_h_emb.reshape(hshape[0], hshape[1], -1)
+        a_n = target_h_emb.norm(dim=2).unsqueeze(2)
+        a_norm = target_h_emb / torch.max(a_n, self.eps * torch.ones_like(a_n))
+
+        # patch-wise absolute value of cosine similarity
+        sim_matrix = torch.einsum('abc,acd->abd', a_norm, a_norm.transpose(1,2))
+        loss_cos = sim_matrix.mean()
+
+        return loss_cos
+
+
+
 class CombinedLoss(nn.Module):
-    def __init__(self, fn='WCE', class_weights = None, gamma=0, weight_focal=0.8, alpha=None, size_average=True, eps=1e-10):
+    def __init__(self, fn='WCE', class_weights = None, gamma=0, weight_focal=0.8, alpha=None, size_average=True, eps=1e-8):
         super(CombinedLoss, self).__init__()
-        print('Used loss function:', fn, ',gamma:', gamma)
+        print(f'Used loss function: {fn}, gamma: {gamma}')
         
         if fn == 'WCE':
             self.loss_fn = nn.CrossEntropyLoss(weight=class_weights)
         elif fn == 'FL':
             self.loss_fn = FocalLoss(gamma=gamma, alpha=alpha, size_average=size_average)
         
-        self.mse = nn.MSELoss()
+        # self.mse = nn.MSELoss()
+        self.cos_loss = CosineLoss()
         self.w1 = weight_focal
-        self.w2 = 1 - weight_focal      # rsme weight
+        self.w2 = 1.0 - weight_focal      # rsme weight
         self.eps = eps
+        self.fn = fn
         
-    def forward(self, logpt, target, ndvi_pred, ndvi_target):
+    def forward(self, logpt, target, ndvi_pred, ndvi_target, attn_heads):
         loss = self.loss_fn(logpt, target)
-        ndvi_loss = torch.sqrt(self.mse(ndvi_pred, ndvi_target) + self.eps)
+        # ndvi_loss = torch.sqrt(self.mse(ndvi_pred, ndvi_target) + self.eps)
 
         if self.w1 == 1.0:
             return loss
         else:
-            return self.w1*loss + self.w2*ndvi_loss
+            attn_loss = self.cos_loss(attn_heads)
+            return self.w1*loss + self.w2*attn_loss
     
 
 # Example usage
