@@ -161,29 +161,3 @@ class PositionwiseFeedForward(nn.Module):
         output = self.layer_norm(output + residual)
         output *= non_padding_mask
         return output
-
-
-class NdviDecoder(nn.Module):
-
-    def __init__(self, d_in, d_hid, d_out=1, dropout=0.1, use_bias=True):
-        # implement timepoint variable T -> H
-        super(NdviDecoder, self).__init__()
-        self.seq_dim = True if d_out == 1 else False
-
-        self.fc1 = nn.Linear(d_in, d_hid, bias=use_bias)
-        self.fc2 = nn.Linear(d_hid, d_out, bias=use_bias)
-        # self.fc3 = nn.Linear(d_hid//2, 1)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x, non_padding_mask):
-
-        output = F.relu(self.fc1(x))
-        output = self.dropout(output)
-        output = self.fc2(output)
-
-        if self.seq_dim == False: output = output.transpose(1, 2)
-
-        output *= non_padding_mask 
-        output = output.squeeze(-1)
-
-        return output

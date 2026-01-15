@@ -3,9 +3,8 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from .TransformerEncoder import TransformerEncoder, NdviDecoder
+from .TransformerEncoder import TransformerEncoder
 from .LTAE import LightTransformerEncoder, get_decoder
-# from .LTAEcopy import LightTransformerEncoder
 
 
 class CropTypeClassifier(nn.Module):
@@ -19,7 +18,6 @@ class CropTypeClassifier(nn.Module):
             num_layers=4,
             num_heads=8,
             num_classes=23, 
-            d_inner_ndvi=64,
             use_lightweight=False,
             concatenate_heads=False,
             use_bias=True):
@@ -59,8 +57,6 @@ class CropTypeClassifier(nn.Module):
 
             self.decoder = get_decoder(decoder_neurons)
             # self.outlinear = nn.Linear(num_heads, num_classes, bias=use_bias)
-            # self.ndvipredict = NdviDecoder(num_heads, d_inner_ndvi, seq_len, use_bias=use_bias)
-            self.ndvipredict = NdviDecoder(num_heads, d_inner_ndvi, 1, use_bias=use_bias) # when predicting on att_weights
 
         else:
             print('Run training on standard Temporal Attention Encoder (TAE)')
@@ -76,7 +72,6 @@ class CropTypeClassifier(nn.Module):
 
             self.max_pool_over_time = nn.MaxPool1d(int(sequence_length))
             self.decoder = nn.Linear(d_model, num_classes, bias=use_bias)
-            self.ndvipredict = NdviDecoder(d_model, d_inner_ndvi, 1, use_bias=use_bias)
 
         self.logsoftmax = nn.LogSoftmax(dim=-1)
 
@@ -103,21 +98,14 @@ class CropTypeClassifier(nn.Module):
 
         if not self.light: # TAE
             classifier_features = self.max_pool_over_time(enc_output.transpose(1, 2)).squeeze(-1)
-            ndvi_output = enc_output # Predict NDVI on the encoded output 
-                                    # Q here: should i process the attention weights & predict on those instead?
-
         else:   #LTAE
             classifier_features = enc_output
-            # ndvi_output = enc_output.unsqueeze(1) # Predict NDVI on the encoded output - makes no sense since output looses temporal information
-            ndvi_output = attn_weights["layer_0"].permute(1, 2, 0) # Enforce NDVI prediction on the attention weights
 
-        ndvi_pred = self.ndvipredict(ndvi_output, non_padding_mask) 
-        
         logits = self.decoder(classifier_features)
                  
         log_probabilities = self.logsoftmax(logits)
 
-        return log_probabilities, attn_weights, ndvi_pred
+        return log_probabilities, attn_weights
 
 
     def predict(self, logprobabilities):

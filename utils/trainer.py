@@ -1,9 +1,6 @@
 import torch
-from utils.classmetric import ClassMetric, NDVIMetric
-from sklearn.metrics import roc_auc_score, auc
+from utils.classmetric import ClassMetric
 from utils.printer import Printer
-import sys
-import math
 import time
 
 
@@ -25,6 +22,7 @@ class Trainer():
                  loss_fn,
                  epochs=100,
                  learning_rate=0.1,
+                 l1_reg = False,
                  store="/tmp",
                  test_every_n_epochs=5,
                  checkpoint_every_n_epochs=20,
@@ -41,7 +39,6 @@ class Trainer():
         self.traindataloader = traindataloader
         self.validdataloader = validdataloader
         self.nclasses=traindataloader.dataset.nclasses
-        # self.nclasses=len(class_names)
         self.store = store
         self.test_every_n_epochs = test_every_n_epochs
         self.logger = logger
@@ -55,7 +52,7 @@ class Trainer():
         self.best_loss = None
         self.loss_fn = loss_fn
         self.class_names = class_names
-        self.lambda_ = 2e-6
+        self.lambda_ = 0.01 if l1_reg else 0.0
 
         if optimizer is None:
             self.optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -232,7 +229,6 @@ class Trainer():
 
         # stores the predictions
         training_metrics = ClassMetric()
-        ndvi_metrics = NDVIMetric()
 
         for iteration, data in enumerate(self.traindataloader):
             self.optimizer.zero_grad()
@@ -247,12 +243,16 @@ class Trainer():
                 targets = targets.cuda()
                 ndvi_targets = ndvi_targets.cuda()
 
-            logprobabilities, attn_weights_by_layer, ndvi_pred = self.model.forward(inputs, positions, non_padding_mask)
+            logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions, non_padding_mask)
 
-            attn_weights = attn_weights_by_layer["layer_0"].permute(1, 2, 0)
-            l1_norm = sum(p.abs().sum() for p in self.model.parameters())
-            loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights) + self.lambda_*l1_norm
-            # loss = self.loss_fn(logprobabilities, targets[:, 0])
+            # Regularize decoder (output layer)
+            l1_norm = 0.0
+            for name, param in self.model.named_parameters():
+                if 'decoder.3' in name:
+                    l1_norm += param.abs().sum()
+
+            # loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights) 
+            loss = self.loss_fn(logprobabilities, targets[:, 0]) + self.lambda_*l1_norm
 
             loss.backward()
             if isinstance(self.optimizer,ScheduledOptim):
@@ -267,9 +267,8 @@ class Trainer():
                 loss.detach().cpu().item(),
                 targets.mode(1)[0].detach().cpu(),
                 predictions.detach().cpu())
-            ndvi_metrics.add_batch_stats(ids, targets.mode(1)[0].detach().cpu(), ndvi_targets.detach().cpu(), ndvi_pred.detach().cpu())
 
-        return dict(tuple(training_metrics.calculate_classification_metrics().items()) + tuple(ndvi_metrics.calculate_ndvi_metrics(self.class_names).items()))  
+        return training_metrics.calculate_classification_metrics()
 
     def test_epoch(self, dataloader):
         # sets the model to train mode: no dropout is applied
@@ -277,7 +276,6 @@ class Trainer():
 
         # stores the predictions
         test_metrics = ClassMetric()
-        ndvi_metrics = NDVIMetric()
 
         with torch.no_grad():
             for iteration, data in enumerate(dataloader):
@@ -291,21 +289,23 @@ class Trainer():
                     targets = targets.cuda()
                     ndvi_targets = ndvi_targets.cuda()
 
-                logprobabilities, attn_weights_by_layer, ndvi_pred = self.model.forward(inputs, positions, non_padding_mask)
-                attn_weights = attn_weights_by_layer["layer_0"].permute(1, 2, 0)
-                l1_norm = sum(p.abs().sum() for p in self.model.parameters())
-                loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights) + self.lambda_*l1_norm
+                logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions, non_padding_mask)
+
+                l1_norm = 0.0
+                for name, param in self.model.named_parameters():
+                    if 'decoder.3' in name:
+                        l1_norm += param.abs().sum()
+                
+                # loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights)
+                loss = self.loss_fn(logprobabilities, targets[:, 0]) + self.lambda_*l1_norm
 
                 prediction = self.model.predict(logprobabilities)
 
                 ## enter numpy world
                 predictions = prediction.detach().cpu()
                 labels = targets.mode(1)[0].detach().cpu()
-                # print(predictions, labels)
-                # print(labels)
 
                 test_metrics.add_batch_stats(ids, loss.detach().cpu(), labels, predictions)
-                ndvi_metrics.add_batch_stats(ids, labels, ndvi_targets.detach().cpu(), ndvi_pred.detach().cpu())
 
-        return dict(tuple(test_metrics.calculate_classification_metrics().items()) + tuple(ndvi_metrics.calculate_ndvi_metrics(self.class_names).items())) 
+        return test_metrics.calculate_classification_metrics()
 

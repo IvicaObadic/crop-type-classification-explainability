@@ -22,16 +22,16 @@ def parse_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--dataset', help='the chosen dataset', default="BavarianCrops", choices=["BavarianCrops", "DENETHOR", "TimeSen2Crop"])
+        '--dataset', help='the chosen dataset', default="DENETHOR", choices=["BavarianCrops", "DENETHOR", "TimeSen2Crop"])
     parser.add_argument(
         '--dataset_folder', help='the root folder of the dataset', default="/home/luca/luca_docker/datasets/")
     parser.add_argument(
         '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
     parser.add_argument(
-        '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
+        '--num_classes', type=int, default=9, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
         # '--model_dir', help='the directory where the trained model is stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/paper/9_classes/ltae/right_padding/obs_aq_date/layers=1,heads=16,emb_dim=128/focal_loss_ratio=100/all_dates/1746306746") #1746219370
-        '--model_dir', help='the directory where the trained model is stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/paper/12_classes/ltae/right_padding/obs_aq_date/concatenate_heads=False/layers=1,heads=64,emb_dim=512,scale_dim=8/WCE,gamma=0/focal_loss_ratio=100/all_dates/1761583314") #1746219370
+        '--model_dir', help='the directory where the trained model is stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/9_classes/right_padding/all_dates/ltae/obs_aq_date/concatenate_heads=False/layers=1,heads=32,emb_dim=512/loss_fn=WCE/l1_reg=True/1768066520") 
     parser.add_argument(
         '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
@@ -41,18 +41,15 @@ def parse_args():
         '--time_points_to_sample', type=int, default=70,
         help='number of points to sample for the random and fixed sampling procedures')
     parser.add_argument(
-        '--loss_fn_weights', type=str, default="1.0", help='Weighting choice alpha in [0,1] for the loss function: total_loss = alpha*focal_loss + (1-alpha)*rsme_loss. Multiple values should be separated with ,')
-    parser.add_argument(
-        '--loss_choice', type=str, default="WCE", help='Choice of loss-function', choices=['WCE', 'FL'])
-    parser.add_argument(
-        '--fl_gamma', type=int, default=0, help='FL - gamma parameter', choices=[0, 1, 2, 5])
-    parser.add_argument(
         '--num_layers', type=int, default=1, help='the number of layers for the model')
     parser.add_argument(
-        '--num_heads', type=int, default=64, help='the number of heads in each layer of the model')
+        '--num_heads', type=int, default=32, help='the number of heads in each layer of the model')
     parser.add_argument('--model_dim', type=int, default=512, help='embedding dimension of the model')
     parser.add_argument('--use_lightweight', action="store_false", help='Choose encoder type: Transformer Encoder (default) or Lightweight Attention Encoder Transformer')
     parser.add_argument('--concatenate_heads', action="store_true", help='Choose LTAE type: new implementation (default) or original')
+    parser.add_argument(
+        '--loss_choice', type=str, default="WCE", help='Choice of loss-function', choices=['WCE', 'FL'])
+    parser.add_argument('--reg_out_layers', action="store_false", help='L1-Regularization of the output/classification layers. Ensures sparse head coefficients')
     parser.add_argument('--save_weights_and_gradients', action="store_false",
                         help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_false",
@@ -237,7 +234,7 @@ def predict(
     os.makedirs(attn_weights_gradients_dir, exist_ok=True)
     
     classification_metric = ClassMetric()
-    ndvi_metric = NDVIMetric()
+    # ndvi_metric = NDVIMetric()
     key_query_parcel_data = dict()
 
 
@@ -262,7 +259,7 @@ def predict(
             y_ndvi = y_ndvi.cuda()
             positions = positions.cuda()
 
-        log_probabilities, attn_weights_by_layer, ndvi_pred = crop_type_classifier_model(x, positions, non_padding_mask)
+        log_probabilities, attn_weights_by_layer = crop_type_classifier_model(x, positions, non_padding_mask)
 
         track_attn_weights_gradient(attn_weights_by_layer)
         prediction = log_probabilities.exp().max()
@@ -288,16 +285,14 @@ def predict(
             with open(os.path.join(attn_weights_gradients_dir, "{}_attn_weights_gradient.pickle".format(parcel_id.item())), "wb") as handle:
                 pickle.dump(attn_weights_gradient, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        loss_attn_weights = attn_weights_by_layer['layer_0'].permute(1, 2, 0)
-        loss = loss_fn(log_probabilities, y[:, 0], ndvi_pred, y_ndvi, loss_attn_weights).item()
+        # loss = loss_fn(log_probabilities, y[:, 0], ndvi_pred, y_ndvi, loss_attn_weights).item()
+        loss = loss_fn(log_probabilities, y[:, 0]).item()
         label = y.mode(1)[0].detach().cpu()
         prediction = crop_type_classifier_model.predict(log_probabilities).detach().cpu()
 
         classification_metric.add_batch_stats(parcel_id, loss, label, prediction)
-        ndvi_metric.add_batch_stats(parcel_id, label, y_ndvi, ndvi_pred)
 
     classification_metric.save_results(predictions_path, test_dataset.get_class_names())
-    ndvi_metric.save_results(predictions_path, test_dataset.get_class_names())
 
     if save_weights_and_gradients:
         extract_attn_weights_to_non_padded_indices(attn_weights_dir, use_lightweight=use_lightweight, test_year=test_year)
@@ -354,9 +349,14 @@ if __name__ == "__main__":
 
     class_weights = torch.from_numpy(train_dataset.classweights).float() #weights from trained or test dataset?
     if torch.cuda.is_available():
-        class_weights = class_weights.cuda()                            
-                        
-    
+        class_weights = class_weights.cuda()   
+
+    if args.loss_choice == 'FL':
+        total_loss_fn = FocalLoss(gamma=1.0)
+    elif args.loss_choice == 'WCE':
+        total_loss_fn = nn.CrossEntropyLoss(weight=class_weights)     
+    # loss_fn=CombinedLoss(fn=args.loss_choice, class_weights=class_weights, gamma=float(args.fl_gamma), weight_focal=0.8),                    
+
     # if args.with_spectral_diff_as_input:
     #     input_channels = 12
     crop_type_classifier_model = init_model_with_hyper_params(
@@ -375,7 +375,7 @@ if __name__ == "__main__":
         test_dataset,
         crop_type_classifier_model,
         args.model_dir,
-        loss_fn=CombinedLoss(fn=args.loss_choice, class_weights=class_weights, gamma=float(args.fl_gamma), weight_focal=0.8),
+        loss_fn=total_loss_fn,
         use_lightweight=args.use_lightweight,
         save_weights_and_gradients=args.save_weights_and_gradients,
         save_key_queries_embeddings=args.save_key_queries_embeddings,

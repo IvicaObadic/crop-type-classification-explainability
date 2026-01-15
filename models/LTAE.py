@@ -88,11 +88,6 @@ class LightTransformerEncoder(nn.Module):
         
         self.positional_encoding = PositionalEncoding(pos_enc_opt, self.d_model, self.num_heads)
 
-        if concatenate_heads:
-            self.scale_dim = d_model
-        else:
-            self.scale_dim = d_model // num_heads
-
     def create_attention_mask(self, x, non_padding_mask):
         """
         Creates the attention masks boolean tensor where
@@ -139,7 +134,7 @@ class LightTransformerEncoder(nn.Module):
         return os.path.join(
             self.positional_encoding.pos_enc_opt,
             "concatenate_heads={}".format(self.concatenate_heads),
-            "layers={},heads={},emb_dim={},scale_dim={}".format(len(self.encoder_layers), self.num_heads, self.d_model, self.scale_dim))
+            "layers={},heads={},emb_dim={}".format(len(self.encoder_layers), self.num_heads, self.d_model))
 
 class MultiHeadAttention(nn.Module):
     ''' Multi-Head Attention module '''

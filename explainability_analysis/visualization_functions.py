@@ -182,6 +182,7 @@ def attn_weights_crop_compare(figures_base_path, temporal_attention_weights, ndv
     fig_width = set_size(plot_width)[0]
     n_subplots = n_heads + 1 if n_heads < len(y_column_names) else len(y_column_names) + 1
     plot_cols = len(target_crops)
+    crops_label = '_'.join(target_crops)
 
     fig, axs = plt.subplots(n_subplots, plot_cols, figsize=(plot_cols*6,n_subplots//2), sharex=True)
 
@@ -243,8 +244,8 @@ def attn_weights_crop_compare(figures_base_path, temporal_attention_weights, ndv
 
     # plt.subplots_adjust(top=0.8)#, left=0.2)
     plt.subplots_adjust(hspace=0.12)
-    # plt.tight_layout()
-    # plt.savefig(os.path.join(figures_base_path, f'{target_crop}_{plot_name}_{len(y_column_names)}.pdf'))
+    plt.tight_layout()
+    plt.savefig(os.path.join(figures_base_path, f'{len(y_column_names)}_highest_heads_{plot_name}_{crops_label}.png'), dpi=300, bbox_inches='tight')
     plt.show()
 
 
@@ -477,9 +478,9 @@ def stacked_boxplot(input_data, title, xlabel, ylabel):
     plt.close()
 
 
-def visualize_attention_coefficients(weights_outlinear_df, target_classes=None, normalize=False):
+def visualize_attention_coefficients(save_path, weights_outlinear_df, target_classes=None, normalize=False, label=''):
     head_labels = {colname:colname.split('_')[1] for colname in weights_outlinear_df.columns.values[1:]}
-    title = 'Attention Weight - coefficients $|w_i|$ by Crop Type'
+    title = 'Relevance of Attention Head per Crop Type'
 
     if target_classes is not None:
         class_weights_df = weights_outlinear_df[weights_outlinear_df['Crop type'].isin(target_classes)]
@@ -511,6 +512,7 @@ def visualize_attention_coefficients(weights_outlinear_df, target_classes=None, 
     plt.ylabel('Attention Head')
     plt.yticks(rotation=0) 
     plt.xlabel('Crop Type')
+    plt.savefig(os.path.join(save_path, f'attention_head_relevance_heatmap{label}.png'), dpi=300, bbox_inches='tight')
     plt.show()
 
 

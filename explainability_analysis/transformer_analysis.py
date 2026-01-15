@@ -35,23 +35,23 @@ def get_attn_weights_patterns(base_model_path,
                               model_timestamp,
                               emb_dim,
                               num_heads,
-                              encoder,
-                              loss_weight,
+                              loss_reg='False',
                               classes_to_exclude=None,
                               model_label="All crops",
                               target_classes = ["grassland","corn", "summer barley", "winter wheat","winter barley"],
                               with_spectral_diff_as_input=False,
+                              use_lightweight=True,
                               concatenate_heads=False,
                               dataset='BavarianCrops'):
     temporal_attn_weights, avg_attention_per_obs_acq_date = get_temporal_attn_weights(base_model_path, date_setting,
                                                                                       model_timestamp,
                                                                                       emb_dim,
                                                                                       num_heads,
-                                                                                      encoder,
-                                                                                      loss_weight,
+                                                                                      loss_reg,
                                                                                       classes_to_exclude,
                                                                                       with_spectral_diff_as_input,
                                                                                       dataset,
+                                                                                      use_lightweight,
                                                                                       concatenate_heads)
     temporal_attn_weights["Date"] = pd.to_datetime(temporal_attn_weights["Date"])
     temporal_attn_weights["Model Label"] = model_label
@@ -68,6 +68,7 @@ def summarize_attention_weights_as_feature_embeddings(
         attn_weights_root_dir,
         target_layer,
         target_head_idx=-1,
+        use_lightweight=True,
         summary_fn="sum"):
     
     # Avg over 70x70 attention heads
@@ -104,7 +105,6 @@ def summarize_attention_weights_as_feature_embeddings(
                 else:
                     relevant_attention_weights = torch.cat((relevant_attention_weights, weights_for_a_layer))
 
-
         #resolve the target heads
         if target_head_idx != -1:
             relevant_indices = np.arange(start=target_head_idx, stop=relevant_attention_weights.shape[0], step=num_heads)
@@ -112,89 +112,30 @@ def summarize_attention_weights_as_feature_embeddings(
             relevant_indices = np.arange(0, relevant_attention_weights.shape[0], step=1)
 
         if summary_fn == "sum":
-            feature_embeddings_for_parcel = relevant_attention_weights[relevant_indices].sum(dim=1)
+            attention_weights_per_parcel = relevant_attention_weights[relevant_indices].sum(dim=1)
         else:
-            feature_embeddings_for_parcel = relevant_attention_weights[relevant_indices].mean(dim=1)
+            attention_weights_per_parcel = relevant_attention_weights[relevant_indices].mean(dim=1)
 
+        attention_weights_per_parcel = attention_weights_per_parcel.cpu().detach().numpy()
 
-        feature_embeddings_for_parcel = feature_embeddings_for_parcel.cpu().detach().numpy()
-        feature_embeddings_for_parcel = pd.DataFrame(index=[parcel_id],
-                                                     data=feature_embeddings_for_parcel,
-                                                     columns=attn_weights_df.columns)
-        feature_embeddings_for_parcel = pd.melt(feature_embeddings_for_parcel, var_name="Date", value_name="Attention", ignore_index=False)
-        feature_embeddings.append(feature_embeddings_for_parcel)
-
-    print("Concatenating the attention weights of the different parcels into a single dataframe")
-    return pd.concat(feature_embeddings)
-
-
-def summarize_light_attention_weights_as_feature_embeddings(
-        attn_weights_root_dir,
-        target_layer,
-        target_head_idx=-1,
-        summary_fn="sum",
-        original_ltae=False):
-
-    # reshape 1x70 attention heads
-    feature_embeddings = []
-
-    attention_weights_files = [attn_weight_file
-                               for attn_weight_file in os.listdir(attn_weights_root_dir)
-                               if attn_weight_file.split("_")[-1] == "weights.pickle"]
-
-    for i, attn_weight_file in enumerate(attention_weights_files):
-        parcel_id = attn_weight_file.split("_")[0]
-
-        if i % 1000 == 0:
-            print("Reading the attention weights for the {}-th test example".format(i))
-
-        with open(os.path.join(attn_weights_root_dir, attn_weight_file), 'rb') as handle:
-            attn_weights_by_layer = pickle.load(handle)
-
-        with open(os.path.join(attn_weights_root_dir, '{}_attn_weights_df.pickle'.format(parcel_id)), 'rb') as handle:
-            attn_weights_df = pickle.load(handle)[target_layer]
-
-        #first resolve the target layers
-        if target_layer != "all":
-            relevant_attention_weights = attn_weights_by_layer[target_layer]
-            num_parcels = relevant_attention_weights.shape[0]
-        else:
-            relevant_attention_weights = None
-            num_parcels = None
-            for layer_idx, layer_key in enumerate(sorted(attn_weights_by_layer.keys())):
-                weights_for_a_layer = attn_weights_by_layer[layer_key]
-                if relevant_attention_weights is None:
-                    relevant_attention_weights = weights_for_a_layer
-                    num_parcels = weights_for_a_layer.shape[0]
-                else:
-                    relevant_attention_weights = torch.cat((relevant_attention_weights, weights_for_a_layer))
-
-        if not original_ltae:
-            num_heads = relevant_attention_weights.shape[1]
-            #resolve the target heads
-            if target_head_idx != -1:
-                relevant_indices = np.arange(start=target_head_idx, stop=relevant_attention_weights.shape[0], step=num_parcels)
-            else:
-                relevant_indices = np.arange(0, relevant_attention_weights.shape[0], step=1)
-            relevant_attention_weights_df = relevant_attention_weights[relevant_indices].cpu().detach().numpy()[0,:,:]
-        else:
-            num_heads = relevant_attention_weights.shape[0]
-            relevant_attention_weights_df = relevant_attention_weights.cpu().detach().numpy()[:,0,:]
-        
-        attention_head_columns = [f'Attention_H{k+1}' for k in range(num_heads)]
-        
-        relevant_attention_weights_df = pd.DataFrame(index=attention_head_columns,
-                                                        data=relevant_attention_weights_df,
+        if not use_lightweight:
+            feature_embeddings_for_parcel = pd.DataFrame(index=[parcel_id],
+                                                        data=attention_weights_per_parcel,
                                                         columns=attn_weights_df.columns)
-        relevant_attention_weights_df_T = relevant_attention_weights_df.T.reset_index()
-        relevant_attention_weights_df_T = relevant_attention_weights_df_T.rename(columns={'index':'Date'})
-
-
-        relevant_attention_weights_df_T["parcel_id"] = parcel_id
-
-        feature_embeddings_for_parcel = relevant_attention_weights_df_T[["parcel_id", "Date"] + attention_head_columns]
-        feature_embeddings_for_parcel = feature_embeddings_for_parcel.sort_values(by="Date").set_index("parcel_id")
-        feature_embeddings_for_parcel.index.name = None
+            feature_embeddings_for_parcel = pd.melt(feature_embeddings_for_parcel, var_name="Date", value_name="Attention", ignore_index=False)
+        
+        else:
+            attention_head_columns = [f'Attention_H{idx+1}' for idx in relevant_indices]
+            feature_embeddings_for_parcel_T = pd.DataFrame(index=attention_head_columns,
+                                                            data=attention_weights_per_parcel,
+                                                            columns=attn_weights_df.columns)
+            
+            feature_embeddings_for_parcel = feature_embeddings_for_parcel_T.T.reset_index()
+            feature_embeddings_for_parcel = feature_embeddings_for_parcel.rename(columns={'index':'Date'})
+            feature_embeddings_for_parcel["parcel_id"] = parcel_id
+            feature_embeddings_for_parcel = feature_embeddings_for_parcel[["parcel_id", "Date"] + attention_head_columns]
+            feature_embeddings_for_parcel = feature_embeddings_for_parcel.sort_values(by="Date").set_index("parcel_id")
+            feature_embeddings_for_parcel.index.name = None
 
         feature_embeddings.append(feature_embeddings_for_parcel)
 
@@ -202,9 +143,8 @@ def summarize_light_attention_weights_as_feature_embeddings(
     return pd.concat(feature_embeddings)
 
 
-def get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path, with_spectral_diff_as_input, dataset, concatenate_heads):
+def get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_reg, root_results_path, with_spectral_diff_as_input, dataset, concatenate_heads):
     model_classes = 9 if dataset == 'DENETHOR' else 12
-    encoder_str = encoder.split('_')[0]
     concat = 'True' if concatenate_heads else 'False'
     if classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in classes_to_exclude.split(',')]
@@ -213,15 +153,15 @@ def get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, n
     model_conf_path = append_occluded_classes_label(model_conf_path, classes_to_exclude)
     model_conf_path = append_spectral_diff_label(model_conf_path, with_spectral_diff_as_input) 
 
-    model_conf_path = os.path.join(model_conf_path, f"{encoder_str}/right_padding/obs_aq_date/concatenate_heads={concat}/layers=1,heads={num_heads},emb_dim={emb_dim},scale_dim={emb_dim // num_heads}/WCE,gamma=0.0/focal_loss_ratio={str(int(loss_weight*100))}")
-    # model_conf_path = os.path.join(model_conf_path, f"{encoder_str}/right_padding/obs_aq_date/layers=1,heads={num_heads},emb_dim=128/focal_loss_ratio={str(int(loss_weight*100))}")
+    model_conf_path = os.path.join(model_conf_path, f"right_padding/{date_setting}/{encoder}/obs_aq_date/concatenate_heads={concat}/layers=1,heads={num_heads},emb_dim={emb_dim}/loss_fn=WCE/l1_reg={loss_reg}")
+    # model_conf_path = os.path.join(model_conf_path, f"{encoder}/right_padding/obs_aq_date/layers=1,heads={num_heads},emb_dim=128/focal_loss_ratio={str(int(loss_weight*100))}")
     # model_conf_path = os.path.join(model_conf_path, f"right_padding/obs_aq_date/layers=1,heads={num_heads},emb_dim=128/{loss_param}focal_loss_ratio={str(int(loss_weight*100))}")
-    model_path = os.path.join(model_conf_path, date_setting, model_timestamp)
+    model_path = os.path.join(model_conf_path, model_timestamp)
 
     return model_path
 
-def get_parcel_attn_weights(base_model_path, date_setting, model_timestamp, parcel_id, loss_weight, classes_to_exclude=None, with_spectral_diff_as_input=False):
-    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, loss_weight, base_model_path,
+def get_parcel_attn_weights(base_model_path, date_setting, model_timestamp, parcel_id, loss_reg, classes_to_exclude=None, with_spectral_diff_as_input=False):
+    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, loss_reg, base_model_path,
                                 with_spectral_diff_as_input)
     attn_weights_path = os.path.join(model_path, "predictions", "attn_weights", "postprocessed")
 
@@ -231,8 +171,9 @@ def get_parcel_attn_weights(base_model_path, date_setting, model_timestamp, parc
     return parcel_attn_weights
 
 
-def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops', concatenate_heads=False, summary_fn="mean"):
-    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path,
+def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, loss_reg, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops', use_lightweight=True, concatenate_heads=False, summary_fn="mean"):
+    encoder = 'ltae' if use_lightweight else 'tae'
+    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_reg, root_results_path,
                                 with_spectral_diff_as_input, dataset, concatenate_heads)
 
     predictions_path = os.path.join(model_path, "predictions")
@@ -248,17 +189,13 @@ def get_temporal_attn_weights(root_results_path, date_setting, model_timestamp, 
         predicted_vs_true_results["TRUE_CROP_TYPE"] = predicted_vs_true_results["LABEL"].apply(lambda x: classmapping[x])
         predicted_vs_true_results["PREDICTED_CROP_TYPE"] = predicted_vs_true_results["PREDICTION"].apply(lambda x: classmapping[x])
 
-        if encoder == 'tae':
-            total_temporal_attention_per_parcel = summarize_attention_weights_as_feature_embeddings(attn_weights_path,
-                                                                                                    "layer_0",
-                                                                                                    summary_fn=summary_fn)
-        else:
-            original_ltae = True if encoder == 'ltae_original' else False
-            total_temporal_attention_per_parcel = summarize_light_attention_weights_as_feature_embeddings(attn_weights_path,
-                                                                                                    "layer_0",
-                                                                                                    original_ltae=original_ltae,
-                                                                                                    summary_fn=summary_fn)
+        total_temporal_attention_per_parcel = summarize_attention_weights_as_feature_embeddings(attn_weights_path,
+                                                                                                "layer_0",
+                                                                                                use_lightweight=use_lightweight,
+                                                                                                summary_fn=summary_fn)
+
         total_temporal_attention_per_parcel = total_temporal_attention_per_parcel.join(predicted_vs_true_results, how="inner")
+
         acquisition_year = '2019' if dataset == 'DENETHOR' else '2018'
         total_temporal_attention_per_parcel["Date"] = pd.to_datetime(
             total_temporal_attention_per_parcel["Date"].apply(lambda x: "{}-{}".format(x, acquisition_year)), format="%d-%m-%Y")
@@ -461,8 +398,8 @@ def calculate_weights_gradients_correlations(predictions_path, predictions):
 
 
 
-def get_out_weigths_per_attention(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops'):
-    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, encoder, loss_weight, root_results_path,
+def get_out_weigths_per_attention(root_results_path, date_setting, model_timestamp, emb_dim, num_heads, loss_reg, classes_to_exclude=None, with_spectral_diff_as_input=False, dataset='BavarianCrops'):
+    model_path = get_model_path(classes_to_exclude, date_setting, model_timestamp, emb_dim, num_heads, 'ltae', loss_reg, root_results_path,
                                 with_spectral_diff_as_input, dataset, concatenate_heads=False)
     best_model_path = os.path.join(model_path, "best_model.pth")
 
@@ -486,6 +423,7 @@ def get_out_weigths_per_attention(root_results_path, date_setting, model_timesta
 
     crop_type_classifier_model.load(best_model_path)
     # outlinear_weights = crop_type_classifier_model.outlinear.weight.cpu().detach().numpy()
+    print(crop_type_classifier_model.named_parameters())
     outlinear_weights = crop_type_classifier_model.decoder[-1].weight.cpu().detach().numpy()
 
     Attention_cols = [f"Attention_H{i+1}" for i in range(num_heads)]
@@ -497,5 +435,6 @@ def get_out_weigths_per_attention(root_results_path, date_setting, model_timesta
 
 
 if __name__ == '__main__':
-    base_model_path = base_model_path = "/home/luca/luca_docker/results/crop-type-classification-explainability"
-    temporal_attn_weights_80, temporal_attn_date_class_avg_80, avg_attention_per_obs_acq_date_80 = get_attn_weights_patterns(base_model_path, "all_dates", '1733393026', 1.0, target_classes=None) # bias=True - 1726567787
+    base_model_path = base_model_path = "/home/luca/luca_docker/results/crop-type-classification-explainability/paper"
+    temporal_attn_weights_80, temporal_attn_date_class_avg_80, avg_attention_per_obs_acq_date_80 = get_attn_weights_patterns(base_model_path, "all_dates", '1748960364', 512, 64, target_classes=None, concatenate_heads=True) # bias=True - 1726567787
+    # temporal_attn_weights_80, temporal_attn_date_class_avg_80, avg_attention_per_obs_acq_date_80 = get_attn_weights_patterns(base_model_path, "all_dates", '1746782583', 512, 64, 1.0, target_classes=None, concatenate_heads=False) # bias=True - 1726567787
