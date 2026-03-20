@@ -11,7 +11,7 @@ def parse_args():
     parser.add_argument(
         '--results_root_dir',
         help='the root folder of the dataset',
-        default="/home/results/crop-type-classification-explainability/12_classes/right_padding/obs_acq_date/layers=1,heads=1,emb_dim=128/")
+        default="/home/luca/luca_docker/results/crop-type-classification-explainability/12_classes/right_padding/obs_aq_date/layers=1,heads=1,emb_dim=128/")
     parser.add_argument(
         '--suffix',
         help='the suffix of the results files',

@@ -1,9 +1,6 @@
 import torch
 from utils.classmetric import ClassMetric
-from sklearn.metrics import roc_auc_score, auc
 from utils.printer import Printer
-import sys
-import math
 import time
 
 
@@ -25,6 +22,7 @@ class Trainer():
                  loss_fn,
                  epochs=100,
                  learning_rate=0.1,
+                 l1_reg = False,
                  store="/tmp",
                  test_every_n_epochs=5,
                  checkpoint_every_n_epochs=20,
@@ -33,6 +31,7 @@ class Trainer():
                  show_n_samples=1,
                  overwrite=True,
                  logger=None,
+                 class_names=[],
                  **kwargs):
 
         self.epochs = epochs
@@ -52,6 +51,8 @@ class Trainer():
         self.not_improved_epochs = 0
         self.best_loss = None
         self.loss_fn = loss_fn
+        self.class_names = class_names
+        self.lambda_ = 0.01 if l1_reg else 0.0
 
         if optimizer is None:
             self.optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -68,7 +69,7 @@ class Trainer():
         else:
             self.visdom = None
 
-        # only save checkpoint if not previously resumed from it
+        # only checkpoint if not previously resumed from it
         self.resumed_run = False
 
         self.epoch = 0
@@ -208,6 +209,20 @@ class Trainer():
     def get_log_name(self):
         return os.path.join(self.store, "log.csv")
 
+    def create_non_padding_mask(self, x, positions):
+        batch_size = x.shape[0]
+        total_sequence_length = x.shape[1]
+
+        non_padding_mask = torch.ones((batch_size, total_sequence_length), dtype=torch.float)
+        for batch_elem_idx in range(batch_size):
+            padded_indices_for_sample = positions[batch_elem_idx] == -1
+            non_padding_mask[batch_elem_idx, padded_indices_for_sample] = 0
+
+        non_padding_mask = torch.unsqueeze(non_padding_mask, -1)
+        if torch.cuda.is_available():
+            non_padding_mask = non_padding_mask.cuda()
+        return non_padding_mask
+
     def train_epoch(self, epoch):
         # sets the model to train mode: dropout is applied
         self.model.train()
@@ -218,15 +233,26 @@ class Trainer():
         for iteration, data in enumerate(self.traindataloader):
             self.optimizer.zero_grad()
 
-            inputs, positions, targets, ids = data
+            inputs, positions, targets, ndvi_targets, ids = data
+            
+            non_padding_mask = self.create_non_padding_mask(inputs, positions)
+
             if torch.cuda.is_available():
                 inputs = inputs.cuda()
                 positions = positions.cuda()
                 targets = targets.cuda()
+                ndvi_targets = ndvi_targets.cuda()
 
-            logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions)
+            logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions, non_padding_mask)
 
-            loss = self.loss_fn(logprobabilities, targets[:, 0])
+            # Regularize decoder (output layer)
+            l1_norm = 0.0
+            for name, param in self.model.named_parameters():
+                if 'decoder.3' in name:
+                    l1_norm += param.abs().sum()
+
+            # loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights) 
+            loss = self.loss_fn(logprobabilities, targets[:, 0]) + self.lambda_*l1_norm
 
             loss.backward()
             if isinstance(self.optimizer,ScheduledOptim):
@@ -254,16 +280,24 @@ class Trainer():
         with torch.no_grad():
             for iteration, data in enumerate(dataloader):
 
-                inputs, positions, targets, ids = data
+                inputs, positions, targets, ndvi_targets, ids = data
+                non_padding_mask = self.create_non_padding_mask(inputs, positions)
 
                 if torch.cuda.is_available():
                     inputs = inputs.cuda()
                     positions = positions.cuda()
                     targets = targets.cuda()
+                    ndvi_targets = ndvi_targets.cuda()
 
-                logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions)
+                logprobabilities, attn_weights_by_layer = self.model.forward(inputs, positions, non_padding_mask)
 
-                loss = self.loss_fn(logprobabilities, targets[:, 0])
+                l1_norm = 0.0
+                for name, param in self.model.named_parameters():
+                    if 'decoder.3' in name:
+                        l1_norm += param.abs().sum()
+                
+                # loss = self.loss_fn(logprobabilities, targets[:, 0], ndvi_pred, ndvi_targets, attn_weights)
+                loss = self.loss_fn(logprobabilities, targets[:, 0]) + self.lambda_*l1_norm
 
                 prediction = self.model.predict(logprobabilities)
 

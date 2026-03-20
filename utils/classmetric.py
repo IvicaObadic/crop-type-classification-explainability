@@ -13,8 +13,13 @@ class ClassMetric(object):
         self.predictions = []
         self.batch_losses = []
 
+        self.ndvi_r2_score = 0.0
+        self.ndvi_rmse_score = 0.0
+
     def add_batch_stats(self, batch_ids, batch_loss, batch_labels, batch_predictions):
-        self.parcel_ids.extend(batch_ids.tolist())
+        # self.parcel_ids.extend(batch_ids.tolist())
+        # if isinstance(batch_ids, tuple):
+        self.parcel_ids.extend(list(batch_ids))
         self.batch_losses.extend([batch_loss])
         self.labels.extend(batch_labels.tolist())
         self.predictions.extend(batch_predictions.tolist())
@@ -52,7 +57,7 @@ class ClassMetric(object):
         return self.labels
 
     def get_predictions(self):
-        return self.predictions
+        return self.predictions    
 
     def save_results(self, target_folder, class_names):
 

@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from .TransformerEncoder import TransformerEncoder
+from .LTAE import LightTransformerEncoder, get_decoder
 
 
 class CropTypeClassifier(nn.Module):
@@ -16,44 +17,65 @@ class CropTypeClassifier(nn.Module):
             d_model=256,
             num_layers=4,
             num_heads=8,
-            d_inner=1024,
-            num_classes=23):
+            num_classes=23, 
+            use_lightweight=False,
+            concatenate_heads=False,
+            use_bias=True):
 
         super(CropTypeClassifier, self).__init__()
 
         self.raw_input_norm = nn.LayerNorm(input_channels)
-        self.inconv = torch.nn.Conv1d(input_channels, d_model, 1)
+        # self.inconv = torch.nn.Conv1d(input_channels, d_model, 1, bias=use_bias)
+        self.inconv1 = torch.nn.Conv1d(input_channels, d_model // 2, 1, bias=use_bias)
+        self.inconv2 = torch.nn.Conv1d(d_model // 2, d_model, 1, bias=use_bias)
         self.convlayernorm = nn.LayerNorm(d_model)
         self.d_model = d_model
+        self.light = use_lightweight
+        self.concatenate_heads = concatenate_heads
 
-        self.transformer_encoder = TransformerEncoder(
-            pos_enc_opt,
-            d_model=d_model,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            d_inner=d_inner)
+        if use_lightweight: 
+            ltae_out_string = 'original' if concatenate_heads else 'newly implemented'
+            print(f'Run training on {ltae_out_string} Lightweight Temporal Attention Encoder (LTAE)')
+            
+            if concatenate_heads:
+                d_inner = d_model // 2
+                decoder_neurons = [d_inner, 64, 32, num_classes]
+            else:
+                d_inner = d_model // num_heads
+                decoder_neurons = [num_heads, num_heads, num_classes]
 
-        self.max_pool_over_time = nn.MaxPool1d(int(sequence_length))
+            print('decoder_neurons', decoder_neurons)
 
-        self.outlinear = nn.Linear(d_model, num_classes, bias=False)
+            self.transformer_encoder = LightTransformerEncoder(
+                pos_enc_opt,
+                sequence_length=sequence_length,
+                d_model=d_model,
+                num_layers=num_layers,
+                num_heads=num_heads,
+                d_inner=d_inner,
+                concatenate_heads=concatenate_heads)
+
+            self.decoder = get_decoder(decoder_neurons)
+            # self.outlinear = nn.Linear(num_heads, num_classes, bias=use_bias)
+
+        else:
+            print('Run training on standard Temporal Attention Encoder (TAE)')
+            self.concatenate_heads = False
+            d_inner = d_model*4 # TAE input
+
+            self.transformer_encoder = TransformerEncoder(
+                pos_enc_opt,
+                d_model=d_model,
+                num_layers=num_layers,
+                num_heads=num_heads,
+                d_inner=d_inner)
+
+            self.max_pool_over_time = nn.MaxPool1d(int(sequence_length))
+            self.decoder = nn.Linear(d_model, num_classes, bias=use_bias)
 
         self.logsoftmax = nn.LogSoftmax(dim=-1)
 
-    def create_non_padding_mask(self, x, positions):
-        batch_size = x.shape[0]
-        total_sequence_length = x.shape[1]
-
-        non_padding_mask = torch.ones((batch_size, total_sequence_length), dtype=torch.float)
-        for batch_elem_idx in range(batch_size):
-            padded_indices_for_sample = positions[batch_elem_idx] == -1
-            non_padding_mask[batch_elem_idx, padded_indices_for_sample] = 0
-
-        non_padding_mask = torch.unsqueeze(non_padding_mask, -1)
-        if torch.cuda.is_available():
-            non_padding_mask = non_padding_mask.cuda()
-        return non_padding_mask
-
-    def forward(self, x, positions):
+    def forward(self, x, positions, non_padding_mask):
         """
         Normalizes the input dimension, increases the embedding dimension of the input tensor
         and forwards the input tensor to the transformer encoder.
@@ -66,21 +88,25 @@ class CropTypeClassifier(nn.Module):
         :return: tuple of log probabilities and attention weights for each layer and head of the transformer encoder
         """
         x = self.raw_input_norm(x)
-        x = self.inconv(x.transpose(1, 2)).transpose(1, 2)
+        # x = self.inconv(x.transpose(1, 2)).transpose(1, 2)
+        x = self.inconv2(self.inconv1(x.transpose(1, 2))).transpose(1, 2)
         x = self.convlayernorm(x)
 
-        non_padding_mask = self.create_non_padding_mask(x, positions)
         x *= non_padding_mask
 
         enc_output, attn_weights = self.transformer_encoder(x, positions, non_padding_mask)
 
-        classifier_features = self.max_pool_over_time(enc_output.transpose(1, 2)).squeeze(-1)
+        if not self.light: # TAE
+            classifier_features = self.max_pool_over_time(enc_output.transpose(1, 2)).squeeze(-1)
+        else:   #LTAE
+            classifier_features = enc_output
 
-        logits = self.outlinear(classifier_features)
-
+        logits = self.decoder(classifier_features)
+                 
         log_probabilities = self.logsoftmax(logits)
 
         return log_probabilities, attn_weights
+
 
     def predict(self, logprobabilities):
         return logprobabilities.argmax(-1)
@@ -110,9 +136,11 @@ def init_model_with_hyper_params(
         d_model,
         num_layers,
         num_heads,
-        with_gpu=True):
+        with_gpu=True,
+        use_lightweight=False,
+        concatenate_heads=False,
+        use_bias=True):
 
-    d_inner = d_model * 4
     crop_type_classifier = CropTypeClassifier(
         input_channels=input_channels,
         sequence_length=sequence_length,
@@ -120,8 +148,10 @@ def init_model_with_hyper_params(
         d_model=d_model,
         num_layers=num_layers,
         num_heads=num_heads,
-        d_inner=d_inner,
-        num_classes=num_classes)
+        num_classes=num_classes,
+        use_lightweight=use_lightweight,
+        concatenate_heads=concatenate_heads,
+        use_bias=use_bias)
 
     if with_gpu and torch.cuda.is_available():
         crop_type_classifier = crop_type_classifier.cuda()

@@ -18,18 +18,22 @@ from predict import *
 import argparse
 
 
+# torch.autograd.set_detect_anomaly(True)
+
 def parse_args():
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--dataset_folder', help='the root folder of the dataset', default="/home/datasets/BavarianCrops")
+        '--dataset', help='the chosen dataset', default="BavarianCrops", choices=["BavarianCrops", "DENETHOR", "TimeSen2Crop"])
+    parser.add_argument(
+        '--dataset_folder', help='the root folder of the dataset', default="/home/luca/luca_docker/datasets/")
     parser.add_argument(
         '--classes_to_exclude', type=str, default=None, help='the classes to exclude during model training/testing')
     parser.add_argument(
         '--num_classes', type=int, default=12, help='the classmaping is selected based on the number of classes')
     parser.add_argument(
-        '--results_root_dir', help='the directory where the results are stored', default="/home/results/crop-type-classification-explainability/")
+        '--results_root_dir', help='the directory where the results are stored', default="/home/luca/luca_docker/results/crop-type-classification-explainability/")
     parser.add_argument(
         '--seq_aggr', help='sequence aggregation method', default="right_padding",
         choices=["random_sampling", "fixed_sampling", "weekly_average", "right_padding"])
@@ -42,6 +46,12 @@ def parse_args():
     parser.add_argument(
         '--num_heads', type=str, default="1", help='the number of heads in each layer of the model. Multiple values should be separated with ,')
     parser.add_argument('--model_dim', type=str, default="128", help='embedding dimension of the model. Multiple values should be separated with ,')
+    parser.add_argument('--use_lightweight', action="store_false", help='Choose encoder type: Transformer Encoder (default) or Lightweight Attention Encoder Transformer')
+    parser.add_argument('--concatenate_heads', action="store_true", help='Choose LTAE type: new implementation (default) or original')
+    parser.add_argument(
+        '--loss_choice', type=str, default="WCE", help='Choice of loss-function', choices=['WCE', 'FL'])
+    parser.add_argument('--reg_out_layers', action="store_true", help='L1-Regularization of the output/classification layers. Ensures sparse head coefficients. Default: off')
+    parser.add_argument('--use_biases', action="store_false", help='set the biases for the linear operations in the layers. Default: true')
     parser.add_argument('--save_weights_and_gradients', action="store_true", help='store the weights and gradients during test time')
     parser.add_argument('--save_key_queries_embeddings', action="store_true",
                         help='store the weights and gradients during test time')
@@ -54,6 +64,7 @@ def parse_args():
     return args
 
 
+
 def set_seed(seed=0):
     random.seed(seed)
     numpy.random.seed(seed)
@@ -64,7 +75,7 @@ def set_seed(seed=0):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-def create_data_loader(dataset, use_fixed_seed, batch_size=128, num_workers=4):
+def create_data_loader(dataset, use_fixed_seed, batch_size=4, num_workers=4):
     if use_fixed_seed:
         def seed_worker(worker_id):
             worker_seed = torch.initial_seed() % 2 ** 32
@@ -76,13 +87,13 @@ def create_data_loader(dataset, use_fixed_seed, batch_size=128, num_workers=4):
 
         return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, worker_init_fn=seed_worker, generator=g)
     else:
-        return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+        return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
 
 def train_and_evaluate_crop_classifier(args):
 
-    dataset_folder = args.dataset_folder
+    dataset_folder = args.dataset_folder + args.dataset
 
-    class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(args.num_classes))
+    class_mapping = os.path.join(dataset_folder, "classmapping{}.csv".format(args.num_classes))  # Change this for TimeSen2Crop - num_classes = 16
 
     most_important_dates_file = args.most_important_dates_file
     num_dates_to_consider = args.num_dates_to_consider
@@ -93,6 +104,7 @@ def train_and_evaluate_crop_classifier(args):
     num_layers_opts = [int(layer) for layer in args.num_layers.split(',')]
     num_heads_opts = [int(head) for head in args.num_heads.split(',')]
     model_dims_opts = [int(model_dim) for model_dim in args.model_dim.split(',')]
+
     if args.classes_to_exclude is not None:
         classes_to_exclude = [class_to_exclude for class_to_exclude in args.classes_to_exclude.split(',')]
     else:
@@ -102,20 +114,52 @@ def train_and_evaluate_crop_classifier(args):
         for num_heads in num_heads_opts:
             for model_dim in model_dims_opts:
                 for training_time in range(sequence_aggregator.get_num_training_times()):
-
-                    train_dataset, valid_dataset, test_dataset = get_partitioned_dataset(
-                        dataset_folder,
-                        class_mapping,
-                        sequence_aggregator,
-                        classes_to_exclude,
-                        most_important_dates_file,
-                        num_dates_to_consider,
-                        dates_removal,
-                        args.with_spectral_diff_as_input)
-
-                    input_channels = 13
-                    if args.with_spectral_diff_as_input:
+                        
+                    # Load requested dataset
+                    if args.dataset == 'BavarianCrops':
+                        train_dataset, valid_dataset, test_dataset = get_partitioned_dataset_BavarianCrops(
+                            dataset_folder,
+                            class_mapping,
+                            sequence_aggregator,
+                            classes_to_exclude,
+                            most_important_dates_file,
+                            num_dates_to_consider,
+                            dates_removal,
+                            args.with_spectral_diff_as_input)
+                        input_channels = 13
+                        test_year = "2018"
+                    elif args.dataset == 'DENETHOR':
+                        train_dataset, valid_dataset, test_dataset = get_partitioned_dataset_DenethorS2(
+                            dataset_folder,
+                            class_mapping,
+                            sequence_aggregator,
+                            classes_to_exclude,
+                            most_important_dates_file,
+                            num_dates_to_consider,
+                            dates_removal,
+                            args.with_spectral_diff_as_input)
                         input_channels = 12
+                        test_year = "2019"
+                    else:
+                        train_dataset, valid_dataset, test_dataset = get_partitioned_dataset_TimeSen2Crop(
+                            dataset_folder,
+                            class_mapping,
+                            sequence_aggregator,
+                            classes_to_exclude,
+                            most_important_dates_file,
+                            num_dates_to_consider,
+                            dates_removal,
+                            args.with_spectral_diff_as_input)
+                        input_channels = 9
+                        test_year = "2018"
+
+                    if args.with_spectral_diff_as_input:
+                        input_channels -= 1
+
+                    class_weights = torch.from_numpy(train_dataset.classweights).float()
+                    if torch.cuda.is_available():
+                        class_weights = class_weights.cuda()                            
+                        
                     #all observation contain sequences of same length
                     sequence_length = train_dataset[0][0].shape[0]
                     num_classes = train_dataset.nclasses
@@ -129,12 +173,16 @@ def train_and_evaluate_crop_classifier(args):
                         args.pos_enc_opt,
                         model_dim,
                         num_layers,
-                        num_heads)
+                        num_heads,
+                        use_lightweight=args.use_lightweight,
+                        concatenate_heads=args.concatenate_heads,
+                        use_bias=args.use_biases)
 
                     optimizer = ScheduledOptim(torch.optim.Adam(
-                            filter(lambda x: x.requires_grad, crop_type_classifier.parameters()),
-                            betas=(0.9, 0.98), eps=1e-09, weight_decay=0.000413),
-                        crop_type_classifier.d_model, 4000)
+                                filter(lambda x: x.requires_grad, crop_type_classifier.parameters()),
+                                lr=1e-3,                           
+                                betas=(0.9, 0.98), eps=1e-09, weight_decay=0.000413), #, 0.05
+                                crop_type_classifier.d_model, 4000)
 
                     with_most_important_dates = "all_dates"
                     if most_important_dates_file is not None:
@@ -146,27 +194,43 @@ def train_and_evaluate_crop_classifier(args):
                     training_directory = os.path.join(args.results_root_dir, "{}_classes".format(num_classes))
                     training_directory = append_occluded_classes_label(training_directory, classes_to_exclude)
                     training_directory = append_spectral_diff_label(training_directory, args.with_spectral_diff_as_input)
-                    training_directory = os.path.join(
-                        training_directory,
-                        sequence_aggregator.get_label(),
-                        crop_type_classifier.get_label(),
-                        with_most_important_dates,
-                        str(int(time.time())))
 
+                    encoder_dir = 'ltae' if args.use_lightweight else 'tae'
+
+                    training_directory = os.path.join(
+                                        training_directory,
+                                        sequence_aggregator.get_label(),
+                                        with_most_important_dates,
+                                        encoder_dir,
+                                        crop_type_classifier.get_label(),
+                                        "loss_fn={}".format(args.loss_choice),
+                                        "l1_reg={}".format(args.reg_out_layers),
+                                        str(int(time.time())))
+
+                    print('Saving training data in: {}'.format(training_directory))
                     logger = Logger(modes=["train", "test"], rootpath=training_directory)
+                    
                     config = dict(
                         epochs=100,
                         store=training_directory,
                         test_every_n_epochs=5,
+                        l1_reg = args.reg_out_layers,
                         logger=logger,
                         optimizer=optimizer)
 
-                    loss_fn = FocalLoss(gamma=1.0)
+                    print(f'\nLoss function: {args.loss_choice} (L1-regularized: {args.reg_out_layers})')
+
+                    if args.loss_choice == 'FL':
+                        total_loss_fn = FocalLoss(gamma=1.0)
+                    elif args.loss_choice == 'WCE':
+                        total_loss_fn = nn.CrossEntropyLoss(weight=class_weights) # Weighted Cross Entropy Loss
+
                     trainer = Trainer(crop_type_classifier,
-                                      create_data_loader(train_dataset, args.use_fixed_seed),
-                                      create_data_loader(valid_dataset, args.use_fixed_seed),
-                                      loss_fn=loss_fn,
-                                      **config)
+                                    create_data_loader(train_dataset, args.use_fixed_seed),
+                                    create_data_loader(valid_dataset, args.use_fixed_seed),
+                                    loss_fn=total_loss_fn,
+                                    class_names=train_dataset.get_class_names(),
+                                    **config)
                     logger = trainer.fit()
 
                     # stores all stored values in the rootpath of the logger
@@ -177,11 +241,14 @@ def train_and_evaluate_crop_classifier(args):
                         test_dataset,
                         crop_type_classifier,
                         training_directory,
-                        loss_fn,
+                        total_loss_fn,
+                        args.use_lightweight,
                         args.save_weights_and_gradients,
-                        args.save_key_queries_embeddings)
+                        args.save_key_queries_embeddings,
+                        test_year)
 
 
 if __name__ == '__main__':
+
     args = parse_args()
     train_and_evaluate_crop_classifier(args)

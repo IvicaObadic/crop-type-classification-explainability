@@ -1,10 +1,10 @@
 from matplotlib.dates import DateFormatter
 DATE_FORMATTER = DateFormatter("%b. %d")
 
-CROP_TYPE_COLOR_MAPPING = {"grassland":"g", "corn": "y", "summer barley": "r", "winter barley": "k", "winter wheat": "c", "fallow":"m"}
-COLOR_MAPPING_PLOTLY = {"grassland":"green", "corn": "yellow", "summer barley": "red", "winter barley": "black", "winter wheat": "dodgerblue", "fallow":"brown"}
+CROP_TYPE_COLOR_MAPPING = {"grassland":"g", "corn": "y", "summer barley": "r", "winter barley": "k", "winter wheat": "c", "fallow":"m", "wheat":"c", "rye":"darkgoldenrod", "barley":"r", "oats":"tan", "oil seeds":"gold", "root crops":"darkorange", "meadows":"g", "forage crops":"lawngreen"}
+COLOR_MAPPING_PLOTLY = {"grassland":"green", "corn": "yellow", "summer barley": "red", "winter barley": "black", "winter wheat": "dodgerblue", "fallow":"brown", "wheat":"dodgerblue", "rye":"darkgoldenrod", "barley":"red", "oats":"tan", "oil seeds":"gold", "root crops":"darkorange", "meadows":"green", "forage crops":"lawngreen"}
 
-FIGURES_BASE_PATH = "C:/Users/Ivica Obadic/paper_plots/crop-type-classification-explainability/"
+FIGURES_BASE_PATH = "/home/luca/luca_docker/results/crop-type-classification-explainability/12_classes/right_padding/obs_aq_date/plots/attention_weights"
 tex_fonts = {
     #source: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
     # Use LaTeX to write all text

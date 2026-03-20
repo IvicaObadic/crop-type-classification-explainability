@@ -37,3 +37,16 @@ class FocalLoss(nn.Module):
             return loss.mean()
         else:
             return loss.sum()
+
+    
+
+# Example usage
+if __name__ == "__main__":
+    logpt = torch.randn((10, 2), requires_grad=True)  # example input logits
+    target = torch.randint(0, 2, (10,))#, requires_grad=True)  # example targets
+    ndvipt = torch.randn((5, 10), requires_grad=True)  # example NDVI predictions
+    ndvi_target = torch.randn((5, 10), requires_grad=True)  # example NDVI targets
+
+    loss = FocalLoss(gamma=1.0)(logpt, target)
+    loss.backward()
+    print(loss)

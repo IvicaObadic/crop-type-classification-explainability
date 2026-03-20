@@ -6,8 +6,10 @@ import torch
 import torch.utils.data
 import pandas as pd
 import os
+import json
 import numpy as np
 import tqdm
+import matplotlib.pyplot as plt
 
 from datasets.sequence_aggregator import *
 from datasets.constants import *
@@ -203,7 +205,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         ids = self.read_ids()
         assert len(ids) > 0
 
-        self.X = list()
+        self.X = []
+        X_dict = {}
         self.nutzcodes = list()
         self.missing_key_dates_obs = list()
         self.stats = dict(
@@ -224,6 +227,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
                     label = label[0]
                     if label in self.mapping.index:
                         self.X.append(X)
+                        X_dict[str(id)] = X.tolist()
                         self.nutzcodes.append(label)
                         self.ids.append(id)
                         self.missing_key_dates_obs.append(parcel_missing_key_dates_obs)
@@ -247,10 +251,10 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
             self.hist,_ = np.histogram(self.y, bins=self.nclasses)
             self.classweights = 1 / self.hist
 
-        self.cache_variables(self.y, self.sequencelengths, self.ids, self.ndims, self.X, self.classweights, self.missing_key_dates_obs)
+        self.cache_variables(self.y, self.sequencelengths, self.ids, self.ndims, X_dict, self.classweights, self.missing_key_dates_obs)
 
 
-    def cache_variables(self, y, sequencelengths, ids, ndims, X, classweights, missing_key_dates_obs):
+    def cache_variables(self, y, sequencelengths, ids, ndims, X_dict, classweights, missing_key_dates_obs):
         os.makedirs(self.cache, exist_ok=True)
         # cache
         np.save(os.path.join(self.cache, "classweights.npy"), classweights)
@@ -258,8 +262,9 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         np.save(os.path.join(self.cache, "ndims.npy"), ndims)
         np.save(os.path.join(self.cache, "sequencelengths.npy"), sequencelengths)
         np.save(os.path.join(self.cache, "ids.npy"), ids)
-        #np.save(os.path.join(self.cache, "dataweights.npy"), dataweights)
-        np.save(os.path.join(self.cache, "X.npy"), X)
+        # np.save(os.path.join(self.cache, "dataweights.npy"), dataweights)
+        json.dump(X_dict, open(os.path.join(self.cache, "X.json"), 'w'))
+        # np.save(os.path.join(self.cache, "X.npy"), X)
         np.save(os.path.join(self.cache, "missing_key_dates_obs.npy"), missing_key_dates_obs)
 
     def load_cached_dataset(self):
@@ -269,8 +274,14 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         self.ndims = int(np.load(os.path.join(self.cache, "ndims.npy")))
         self.sequencelengths = np.load(os.path.join(self.cache, "sequencelengths.npy"))
         self.max_sequence_length = self.sequencelengths.max()
-        self.ids = np.load(os.path.join(self.cache, "ids.npy"))
-        self.X = np.load(os.path.join(self.cache, "X.npy"), allow_pickle=True)
+        # self.ids = np.load(os.path.join(self.cache, "ids.npy"))
+        X_dict = json.load(open(os.path.join(self.cache, 'X.json')))
+        self.X = []
+        self.ids = []
+        for id, X_values in X_dict.items():
+            self.ids.append(int(id))
+            self.X.append(np.array(X_values))
+        # self.X = np.load(os.path.join(self.cache, "X.npy"), allow_pickle=True)
         self.missing_key_dates_obs = np.load(os.path.join(self.cache, "missing_key_dates_obs.npy"), allow_pickle=True)
 
     def cache_exists(self):
@@ -279,7 +290,8 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         ndimsexist = os.path.exists(os.path.join(self.cache, "ndims.npy"))
         sequencelengthsexist = os.path.exists(os.path.join(self.cache, "sequencelengths.npy"))
         idsexist = os.path.exists(os.path.join(self.cache, "ids.npy"))
-        Xexists = os.path.exists(os.path.join(self.cache, "X.npy"))
+        Xexists = os.path.exists(os.path.join(self.cache, "X.json"))
+        # Xexists = os.path.exists(os.path.join(self.cache, "X.npy"))
         return yexist and sequencelengthsexist and idsexist and ndimsexist and Xexists and weightsexist
 
     def clean_cache(self):
@@ -289,7 +301,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         os.remove(os.path.join(self.cache, "sequencelengths.npy"))
         os.remove(os.path.join(self.cache, "ids.npy"))
         #os.remove(os.path.join(self.cache, "dataweights.npy"))
-        os.remove(os.path.join(self.cache, "X.npy"))
+        os.remove(os.path.join(self.cache, "X.json"))
         os.removedirs(self.cache)
 
     def load(self, csv_file):
@@ -300,7 +312,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         # subset only the relevant columns in the dataframe and remove rows with missing values
         columns_to_take = ["label"]
-        columns_to_take.extend(BANDS)
+        columns_to_take.extend(BAVCROPS_BANDS)
         sample = sample[columns_to_take].dropna()
 
         if sample.empty:
@@ -316,13 +328,13 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
         label = sample["label"].values
         sample = sample.groupby('TIMESTAMP').mean().reset_index()
-        sample[BANDS] = sample[BANDS] * NORMALIZING_FACTOR
-        final_bands_to_use = BANDS
+        sample[BAVCROPS_BANDS] = sample[BAVCROPS_BANDS] * NORMALIZING_FACTOR
+        final_bands_to_use = BAVCROPS_BANDS
         if self.with_spectral_diff_as_input:
-            sample[BANDS] = sample[BANDS].diff(axis=1)
+            sample[BAVCROPS_BANDS] = sample[BAVCROPS_BANDS].diff(axis=1)
             # the first column is NaN column because it has no previous element to calculate the difference
             sample = sample.dropna(axis=1)
-            final_bands_to_use = BANDS[1:]
+            final_bands_to_use = BAVCROPS_BANDS[1:]
 
         missing_key_dates_obs = 0
         if self.most_important_dates is not None:
@@ -371,18 +383,30 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         X = np.copy(self.X[idx])
+        # print(X.shape)
         parcel_id = self.ids[idx]
 
         X, positions = self.sequence_aggregator.aggregate_sequence(parcel_id, X, self)
+        red_idx = BAVCROPS_BANDS.index(VISIBLE_RED_BAND)
+        nir_idx = BAVCROPS_BANDS.index(NEAR_INFRARED_BAND)
+        y_ndvi = (X[:,nir_idx] - X[:,red_idx]) / (X[:,nir_idx] + X[:,red_idx] + 1e-10)
 
         y = np.array([self.y[idx]] * X.shape[0])  # repeat y for each entry in x
 
         X = torch.from_numpy(X).type(torch.FloatTensor)
         y = torch.from_numpy(y).type(torch.LongTensor)
+        y_ndvi = torch.from_numpy(y_ndvi).type(torch.FloatTensor)
         positions = torch.from_numpy(positions).type(torch.LongTensor)
 
-        return X, positions, y, parcel_id
-
+        return X, positions, y, y_ndvi, parcel_id
+    
+    def plot_ndvi(self,idx):
+        X, positions, y, y_ndvi, parcel_id = self.__getitem__(idx)
+        
+        ndvi_timeseries = np.arange(len(y_ndvi))
+        plt.plot(ndvi_timeseries, y_ndvi, label='getitem')
+        plt.title(f'Phenological cycle for sample id {parcel_id}')
+    
     def get_most_important_dates(self, most_important_dates_file):
         if most_important_dates_file is None:
             return None
@@ -408,7 +432,7 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
 
             parcel_reflectance = pd.DataFrame(
                 parcel_reflectance,
-                columns=DATE_COLUMN_NAMES + BANDS)
+                columns=DATE_COLUMN_NAMES + BAVCROPS_BANDS)
 
             parcel_reflectance = add_timestamp_column_from_date_columns(parcel_reflectance)
             parcel_reflectance.drop(["YEAR", "MONTH", "DATE"], axis=1, inplace=True)
@@ -423,3 +447,45 @@ class BavarianCropsDataset(torch.utils.data.Dataset):
         parcel_spectral_indices = pd.concat(spectral_indices_dfs)
         parcel_spectral_indices["Date"] = pd.to_datetime(parcel_spectral_indices["TIMESTAMP"], format="%Y-%m-%d")
         return parcel_spectral_indices
+
+
+
+
+if __name__ == "__main__":
+    sequence_aggregator = resolve_sequence_aggregator("right_padding",
+                                                      70,
+                                                      None is not None)
+    train_dataset = BavarianCropsDataset(root="/home/luca/luca_docker/datasets/BavarianCrops",
+                                             partition="train",
+                                             classmapping="/home/luca/luca_docker/datasets/BavarianCrops/classmapping12.csv",
+                                             region="holl",
+                                             sequence_aggregator=sequence_aggregator,
+                                             classes_to_exclude=None,
+                                             scheme="blocks",
+                                             most_important_dates_file=None,
+                                             num_dates_to_consider=1,
+                                             dates_removal=False,
+                                             with_spectral_diff_as_input=False)
+    
+    # train_dataset.plot_ndvi(56)
+
+    all_indices = train_dataset.calculate_spectral_indices()
+
+    X, positions, y, y_ndvi, parcel_id = next(iter(train_dataset))
+    parcel_indices = all_indices[:71]
+    timestamps = np.arange(71)
+    # parcel_indices = all_indices[str(parcel_id)]
+
+    print(parcel_indices['NDVI'], parcel_indices['TIMESTAMP'])
+
+    train_dataset.plot_ndvi(0)
+    plt.plot(timestamps, parcel_indices['NDVI'], label='calculate_spectral_indices')
+    plt.legend()
+    plt.show()
+    plt.savefig(f'ndvi_series_{parcel_id}.png')
+    
+    for i,train_batch in enumerate(train_dataset):
+        print(train_batch[0].shape)
+        print(train_batch[3].shape)
+        if i==1:
+            break

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchtext.nn.modules.multiheadattention import InProjContainer, MultiheadAttentionContainer, ScaledDotProduct
+# from LTAE import MultiHeadAttention
 
 POS_ENC_OBS_AQ_DATE = "obs_aq_date"
 POS_ENC_SEQ_ORDER = "seq_order"
@@ -18,23 +19,23 @@ class EncoderLayer(nn.Module):
         self.inp_projection_layer = InProjContainer(
             nn.Linear(emb_dim, emb_dim),
             nn.Linear(emb_dim, emb_dim),
-            nn.Linear(emb_dim, emb_dim))
+            nn.Linear(emb_dim, emb_dim, bias=False))     # original code: bias always false here
 
         self.attention_layer = MultiheadAttentionContainer(
-            num_heads,
-            self.inp_projection_layer,
-            ScaledDotProduct(),
-            nn.Linear(emb_dim, emb_dim),
-            batch_first=True)
+                num_heads,
+                self.inp_projection_layer,
+                ScaledDotProduct(),
+                nn.Linear(emb_dim, emb_dim, bias=False),     # original code: bias always false here
+                batch_first=True)
 
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(emb_dim)
 
-        self.pos_ffn = PositionwiseFeedForward(emb_dim, d_inner, dropout=dropout)
+        self.pos_ffn = PositionwiseFeedForward(emb_dim, d_inner, dropout=dropout) # original code: bias always false here
 
     def forward(self, x, attn_mask, non_padding_mask):
-        attn_output, attn_weight = self.attention_layer(x, x, x, attn_mask=attn_mask)
 
+        attn_output, attn_weight = self.attention_layer(x, x, x, attn_mask=attn_mask)
         output = self.dropout(attn_output)
         output = self.layer_norm(output + x)
         output *= non_padding_mask
